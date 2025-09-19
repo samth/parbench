@@ -1,6 +1,12 @@
 #lang racket
 (require racket/future         ; processor-count
-         racket/match)
+         racket/match
+         racket/string)
+
+(provide vector-boyer-moore-majority/sequential
+         vector-boyer-moore-majority/parallel
+         make-majority-vector
+         equal/heavy)
 
 ;; -------- Tunable size --------
 (define N 1000000) ; change here
@@ -119,23 +125,121 @@
 ;; -------- Benchmark --------
 
 (module+ main
-  (define v (make-majority-vector N 7 #:p 0.6 #:kinds 64))
+  (define benchmark-sizes-default '(10000 50000 200000 1000000))
+  (define benchmark-sizes benchmark-sizes-default)
+  (define worker-counts '(1 2 4 8))
+  (define target-work N)
+  (define majority-value 7)
+  (define majority-probability 0.6)
+  (define majority-kinds 64)
+  (define rng-seed 424242)
 
-  (define (bench label thunk)
+  (define (parse-positive-integer str label)
+    (define n (string->number str))
+    (unless (and n (integer? n) (> n 0))
+      (error 'bmbench-main "~a expects a positive integer, got ~a" label str))
+    (inexact->exact n))
+
+  (define (parse-integer str label)
+    (define n (string->number str))
+    (unless (and n (integer? n))
+      (error 'bmbench-main "~a expects an integer, got ~a" label str))
+    (inexact->exact n))
+
+  (define (parse-positive-list str label)
+    (define parts
+      (for/list ([piece (in-list (string-split str "," #:trim? #f))]
+                 #:unless (string=? "" (string-trim piece)))
+        (string-trim piece)))
+    (unless (pair? parts)
+      (error 'bmbench-main "~a expects at least one integer" label))
+    (for/list ([piece (in-list parts)])
+      (parse-positive-integer piece label)))
+
+  (define (parse-probability str)
+    (define n (string->number str))
+    (unless (and n (real? n) (> n 0) (<= n 1))
+      (error 'bmbench-main "--probability expects a real in (0,1], got ~a" str))
+    (exact->inexact n))
+
+  (define (maybe-parse-seed str)
+    (define lowered (string-downcase (string-trim str)))
+    (if (or (string=? lowered "none") (string=? lowered "null"))
+        #f
+        (parse-integer str "--seed")))
+
+  (command-line
+   #:program "bmbench.rkt"
+   #:once-each
+   [("--sizes") arg "Comma-separated vector lengths (e.g., 10000,50000)."
+    (set! benchmark-sizes (parse-positive-list arg "--sizes"))]
+   [("--workers") arg "Comma-separated worker counts for benchmarking."
+    (set! worker-counts (parse-positive-list arg "--workers"))]
+   [("--target-work") arg "Approximate total element work per size (default mirrors N)."
+    (set! target-work (parse-positive-integer arg "--target-work"))]
+   [("--majority") arg "Majority value inserted into generated vectors."
+    (set! majority-value (parse-integer arg "--majority"))]
+   [("--probability") arg "Majority probability between 0 and 1 (default 0.6)."
+    (set! majority-probability (parse-probability arg))]
+   [("--kinds") arg "Distinct value kinds allocated to non-majority elements."
+    (set! majority-kinds (parse-positive-integer arg "--kinds"))]
+   [("--seed") arg "Random seed integer, or 'none' to leave RNG state untouched."
+    (set! rng-seed (maybe-parse-seed arg))])
+
+  (unless (pair? benchmark-sizes)
+    (error 'bmbench-main "Benchmark sizes list may not be empty."))
+  (unless (pair? worker-counts)
+    (error 'bmbench-main "Worker count list may not be empty."))
+
+  (when rng-seed (random-seed rng-seed))
+
+  (define (iterations-for len)
+    (max 1 (exact-round (/ target-work len))))
+
+  (define (bench label thunk #:repeat [repeat 1] #:check [check #f])
     (collect-garbage)
     (collect-garbage)
     (collect-garbage)
-    (displayln label)
-    (time (thunk)))
+    (displayln (format "~a (x~a)" label repeat))
+    (time
+     (let loop ([i repeat] [last #f])
+       (if (zero? i)
+           last
+           (let ([res (thunk)])
+             (when check (check res))
+             (loop (sub1 i) res))))))
 
-  (bench "sequential"
-         (λ () (vector-boyer-moore-majority/sequential v #:equal equal/heavy)))
+  (for ([len (in-list benchmark-sizes)]
+        [index (in-naturals)])
+    (define repeats (iterations-for len))
+    (define vec (make-majority-vector len majority-value
+                                      #:p majority-probability
+                                      #:kinds majority-kinds))
+    (when (> index 0) (newline))
+    (displayln (format "=== vector length ~a, repeat x~a ===" len repeats))
 
-  ;; reuse pool to avoid setup noise
-  (for ([w '(1 2 4 8)])
-    (define p (make-parallel-thread-pool w))
-    (bench (format "parallel ~a worker(s)" w)
-           (λ () (vector-boyer-moore-majority/parallel v #:pool p #:equal equal/heavy)))
-    (parallel-thread-pool-close p)))
+    (define baseline #f)
+    (bench (format "sequential size ~a" len)
+           (λ () (vector-boyer-moore-majority/sequential vec #:equal equal/heavy))
+           #:repeat repeats
+           #:check (λ (res)
+                     (if baseline
+                         (unless (equal? res baseline)
+                           (error 'benchmark
+                                  "Sequential result changed for size ~a" len))
+                         (set! baseline res))))
 
-
+    (for ([w (in-list worker-counts)])
+      (define pool (make-parallel-thread-pool w))
+      (bench (format "parallel size ~a worker(s) ~a" len w)
+             (λ () (vector-boyer-moore-majority/parallel vec
+                                                         #:pool pool
+                                                         #:equal equal/heavy))
+             #:repeat repeats
+             #:check (λ (res)
+                       (unless (equal? res baseline)
+                         (error 'benchmark
+                                "Parallel result mismatch for size ~a worker(s) ~a"
+                                len w))))
+      (parallel-thread-pool-close pool)))
+  (newline))
