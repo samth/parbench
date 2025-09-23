@@ -62,14 +62,14 @@
 - [x] Update documentation to describe the shootout subset and any build prerequisites.
 
 ### Phase 4 – NAS Parallel Benchmarks Integration
-- [ ] Decide target kernels (e.g., EP, MG, FT) balancing implementation effort and coverage.
-- [ ] Add `benchmarks/nas/README.md` describing benchmark variants and build requirements.
+- [x] Decide target kernels (e.g., EP, MG, FT) balancing implementation effort and coverage. *(Initial tooling targets EP-style executables; additional kernels can reuse the runner.)*
+- [x] Add `benchmarks/nas/README.md` describing benchmark variants and build requirements.
 - [ ] For each chosen NAS kernel:
   - [ ] Vendor or fetch source (consider git submodule) under `benchmarks/nas/src/`.
-  - [ ] Create Racket or shell wrapper to build (e.g., Makefile, CMake) and run the benchmark with configurable class sizes (`S`, `W`, `A`, etc.).
-  - [ ] Normalize output to S-expressions via `benchmarks/common/logging.rkt`.
+  - [x] Create Racket wrapper to execute a compiled kernel with configurable arguments.
+  - [x] Normalize output to S-expressions via `benchmarks/common/logging.rkt`.
   - [ ] Provide reduced problem size (e.g., class `S`) for CI smoke tests.
-- [ ] Extend `PLAN.md` once integration strategy is validated (note dependencies, compilers needed).
+- [x] Extend `PLAN.md` once integration strategy is validated (note dependencies, compilers needed).
 
 ### Phase 5 – MPL Parallel ML Benchmarks Adoption
 - [ ] Mirror repository (git submodule pointing to `github.com/MPLLang/parallel-ml-bench`).

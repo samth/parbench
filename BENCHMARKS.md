@@ -113,6 +113,21 @@ bmbench parallel   1.000 4.000 0.000 4.000 4.000 4.000
 
 Pass `-` to read from stdin if you are piping results.
 
+## External Suites
+
+### NAS Parallel Benchmarks
+
+```bash
+racket benchmarks/nas/run.rkt \
+  --binary /path/to/npb/bin/ep.A.x \
+  --arg -t \
+  --arg 4 \
+  --repeat 3 \
+  --log logs/nas-ep.sexp
+```
+
+Use `--arg` repeatedly to pass kernel-specific parameters (you can also supply extra positional arguments at the end). Specify `--cwd` when the executable must run from its build directory. The runner enforces a successful exit status and records timings with the supplied `--label` (defaulting to the binary name).
+
 ## Next Steps
 
 - Add additional shootout workloads (binary trees, n-body, etc.) following the `spectral-norm` pattern.
