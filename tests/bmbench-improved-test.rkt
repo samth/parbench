@@ -1,7 +1,7 @@
 #lang racket
 
 (require rackunit
-         "../bmbench_improved.rkt")
+         "../benchmarks/racket/bmbench_improved.rkt")
 
 (module+ test
   (test-case "improved parallel matches sequential on small vector"

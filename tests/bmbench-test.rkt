@@ -2,7 +2,7 @@
 
 (require rackunit
          racket/future
-         "../bmbench.rkt")
+         "../benchmarks/racket/bmbench.rkt")
 
 (module+ test
   (define (both vec #:equal [eq equal?] #:workers [workers 4])

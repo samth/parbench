@@ -1,7 +1,7 @@
 #lang racket
 
 (require rackunit
-         "../richards.rkt")
+         "../benchmarks/racket/richards.rkt")
 
 (module+ test
   (test-case "richards sequential baseline"
