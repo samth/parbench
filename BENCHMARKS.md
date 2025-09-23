@@ -56,6 +56,14 @@ racket benchmarks/racket/rows1b.rkt \
   --repeat 3 \
   --log logs/rows1b.sexp
 
+# Spectral norm (shootout) benchmark
+racket benchmarks/shootout/spectral-norm.rkt \
+  --n 2000 \
+  --iterations 15 \
+  --workers 8 \
+  --repeat 5 \
+  --log logs/spectral-norm.sexp
+
 ```
 
 Key switches (all optional):
@@ -65,6 +73,7 @@ Key switches (all optional):
 - `--target-work`: Aggregate work target to normalize iteration counts.
 - `--probability`, `--kinds`, `--threshold`, `--chunk-size`, `--chunk-multiplier`: Workload-tuning parameters for the Boyer–Moore variants.
 - `--rows`, `--chunk-size`, `--repeat`: Generation size and scheduling parameters for the “1B rows” benchmark.
+- `--n`, `--iterations`, `--workers`, `--repeat`: Controls for the spectral norm workload.
 - `--iterations`: Number of full Richards runs per benchmark invocation.
 - `--log`: Write S-expression records to a file in addition to stdout.
 

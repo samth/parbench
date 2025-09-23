@@ -51,15 +51,15 @@
 - [ ] Document usage in `BENCHMARKS.md` (new file) covering logging convention and summary scripts.
 
 ### Phase 3 – Racket Shootout Benchmarks Integration
-- [ ] Audit the existing Racket shootout benchmark implementations (e.g., under Racket’s `benchmarks/shootout` directory) and identify parallelizable workloads.
-- [ ] Create `benchmarks/shootout/README.md` summarizing included benchmarks, inputs, and any deviations from upstream.
+- [x] Audit the existing Racket shootout benchmark implementations (e.g., under Racket’s `benchmarks/shootout` directory) and identify parallelizable workloads.
+- [x] Create `benchmarks/shootout/README.md` summarizing included benchmarks, inputs, and any deviations from upstream.
 - [ ] Vendor or submodule the shootout sources under `benchmarks/shootout/src/`, keeping licensing notices intact.
-- [ ] Wrap each selected benchmark with a Racket CLI front-end that:
-  - [ ] Accepts problem size / iteration parameters consistent with upstream usage.
-  - [ ] Emits timing results via the shared S-expression logging helper.
-  - [ ] Provides reduced-size configurations suitable for CI smoke tests.
-- [ ] Add RackUnit or property-based sanity checks where feasible (e.g., comparing outputs against known reference results for small inputs).
-- [ ] Update documentation to describe the shootout subset and any build prerequisites.
+- [x] Wrap each selected benchmark with a Racket CLI front-end that:
+  - [x] Accepts problem size / iteration parameters consistent with upstream usage.
+  - [x] Emits timing results via the shared S-expression logging helper.
+  - [x] Provides reduced-size configurations suitable for CI smoke tests.
+- [x] Add RackUnit or property-based sanity checks where feasible (e.g., comparing outputs against known reference results for small inputs).
+- [x] Update documentation to describe the shootout subset and any build prerequisites.
 
 ### Phase 4 – NAS Parallel Benchmarks Integration
 - [ ] Decide target kernels (e.g., EP, MG, FT) balancing implementation effort and coverage.
