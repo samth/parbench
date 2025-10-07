@@ -5,7 +5,25 @@
          racket/math
          racket/string
          plot
+         plot/utils
          "analysis.rkt")
+
+(define (bars data
+              #:width [width 0.8]
+              #:label [label #f])
+  (define half-width (/ width 2.0))
+  (define rects
+    (for/list ([point (in-list data)])
+      (unless (and (vector? point) (= (vector-length point) 2))
+        (error 'bars "expected (vector x y), got ~a" point))
+      (define x (vector-ref point 0))
+      (define y (vector-ref point 1))
+      (define x-min (- x half-width))
+      (define x-max (+ x half-width))
+      (define y-min (min 0 y))
+      (define y-max (max 0 y))
+      (vector (ivl x-min x-max) (ivl y-min y-max))))
+  (rectangles rects #:label label))
 
 (module+ main
   (define inputs '())

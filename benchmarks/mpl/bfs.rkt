@@ -1,6 +1,7 @@
 #lang racket
 
 (require racket/fixnum
+         data/queue
          "../common/cli.rkt"
          "../common/run.rkt"
          "../common/logging.rkt"
