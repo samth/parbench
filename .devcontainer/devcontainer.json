@@ -1,0 +1,20 @@
+{
+  "name": "Racket Parallel Benchmark Suite",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "evzen-wybitul.magic-racket",
+        "karyfoundation.racket"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+  "postCreateCommand": "raco test tests/",
+  "remoteUser": "root"
+}
