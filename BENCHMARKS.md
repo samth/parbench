@@ -14,11 +14,22 @@ benchmarks/
     bmbench.rkt           ; original Boyer–Moore benchmark
     bmbench_improved.rkt  ; chunked futures variant
     richards.rkt          ; futures-enabled Richards benchmark
-  shootout/              ; placeholder for Racket shootout workloads (Stage 3)
-  nas/                   ; placeholder for NAS kernels (Stage 4)
-  mpl/                   ; placeholder for MPL benchmarks (Stage 5)
+    rows1b.rkt            ; 1B rows synthetic workload
+  shootout/
+    README.md
+    spectral-norm.rkt     ; spectral norm with thread-based parallelism
+    binary-trees.rkt      ; binary tree checksum with threads
+    nbody.rkt             ; n-body gravitational simulation
+    fannkuch-redux.rkt    ; fannkuch-redux permutation benchmark
+    mandelbrot.rkt        ; mandelbrot set fractal generation
+    chameneos.rkt         ; chameneos-redux thread coordination benchmark
+  nas/
+    README.md             ; instructions + runner for NAS binaries
+    run.rkt               ; wrapper that executes existing NAS executables
   tools/
+    analysis.rkt          ; shared log aggregation helpers
     summarize-results.rkt ; S-expression log aggregator
+    plot-results.rkt      ; PNG plotting utility powered by `plot`
 ```
 
 ## Running the Racket Benchmarks
@@ -64,16 +75,49 @@ racket benchmarks/shootout/spectral-norm.rkt \
   --repeat 5 \
   --log logs/spectral-norm.sexp
 
+# Binary trees (shootout) benchmark
+racket benchmarks/shootout/binary-trees.rkt \
+  --max-depth 18 \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/binary-trees.sexp
+
+# N-body simulation (shootout) benchmark
+racket benchmarks/shootout/nbody.rkt \
+  --n 5000000 \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/nbody.sexp
+
+# Fannkuch-redux (shootout) benchmark
+racket benchmarks/shootout/fannkuch-redux.rkt \
+  --n 10 \
+  --workers 1 \
+  --repeat 3 \
+  --log logs/fannkuch-redux.sexp
+
+# Mandelbrot set (shootout) benchmark
+racket benchmarks/shootout/mandelbrot.rkt \
+  --n 1000 \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/mandelbrot.sexp
+
+# Chameneos-redux (shootout) benchmark
+racket benchmarks/shootout/chameneos.rkt \
+  --n 10000 \
+  --repeat 3 \
+  --log logs/chameneos.sexp
 ```
 
 Key switches (all optional):
 
 - `--sizes`: Comma-separated vector lengths (Boyer–Moore benchmarks).
-- `--workers`: Worker counts to evaluate in the parallel sweeps.
-- `--target-work`: Aggregate work target to normalize iteration counts.
-- `--probability`, `--kinds`, `--threshold`, `--chunk-size`, `--chunk-multiplier`: Workload-tuning parameters for the Boyer–Moore variants.
+- `--workers`: Worker counts to evaluate in the parallel sweeps (bench-specific meaning documented above).
+- `--target-work`: Aggregate work target to normalize iteration counts (Boyer–Moore).
+- `--probability`, `--kinds`, `--threshold`, `--chunk-size`, `--chunk-multiplier`: Workload tuning for Boyer–Moore variants.
 - `--rows`, `--chunk-size`, `--repeat`: Generation size and scheduling parameters for the “1B rows” benchmark.
-- `--n`, `--iterations`, `--workers`, `--repeat`: Controls for the spectral norm workload.
+- `--n`, `--max-depth`, `--iterations`, `--workers`, `--repeat`: Controls for the shootout workloads (spectral norm, binary trees, n-body, fannkuch-redux).
 - `--iterations`: Number of full Richards runs per benchmark invocation.
 - `--log`: Write S-expression records to a file in addition to stdout.
 
@@ -113,6 +157,21 @@ bmbench parallel   1.000 4.000 0.000 4.000 4.000 4.000
 
 Pass `-` to read from stdin if you are piping results.
 
+## Plotting Results
+
+Use the plotting utility to turn aggregated statistics into a PNG bar chart. Variants are grouped per benchmark name, and you can toggle between real or CPU means.
+
+```bash
+racket benchmarks/tools/plot-results.rkt \
+  --input logs/bmbench.sexp \
+  --input logs/binary-trees.sexp \
+  --metric real \
+  --title "Benchmark (real ms)" \
+  --output plots/benchmark-real.png
+```
+
+Metrics supported: `real` (default) or `cpu`. The script computes means across all runs and generates a grouped bar chart using the `plot` library.
+
 ## External Suites
 
 ### NAS Parallel Benchmarks
@@ -128,8 +187,36 @@ racket benchmarks/nas/run.rkt \
 
 Use `--arg` repeatedly to pass kernel-specific parameters (you can also supply extra positional arguments at the end). Specify `--cwd` when the executable must run from its build directory. The runner enforces a successful exit status and records timings with the supplied `--label` (defaulting to the binary name).
 
+## Running Multiple Benchmarks
+
+Use the unified suite runner to execute multiple benchmarks with a single command:
+
+```bash
+# Run all shootout benchmarks with default parameters
+racket benchmarks/run-suite.rkt --suite shootout
+
+# Run all benchmarks with quick smoke test configuration
+racket benchmarks/run-suite.rkt --suite all --config benchmarks/config/quick.sexp
+
+# Run specific suites
+racket benchmarks/run-suite.rkt --suite racket --suite shootout
+
+# Use custom log directory
+racket benchmarks/run-suite.rkt --suite shootout --log-dir my-logs
+```
+
+### Configuration Files
+
+Predefined configuration files control problem sizes and repetitions:
+
+- `benchmarks/config/quick.sexp` - Fast smoke tests (minimal sizes, 1 repetition)
+- `benchmarks/config/standard.sexp` - Moderate workloads (typical benchmarking)
+- `benchmarks/config/stress.sexp` - Large problem sizes (comprehensive evaluation)
+
+Configuration files use S-expression format with override specifications per benchmark.
+
 ## Next Steps
 
-- Add additional shootout workloads (binary trees, n-body, etc.) following the `spectral-norm` pattern.
+- Add additional shootout workloads (fasta, regex-dna, k-nucleotide, etc.) following the shared harness.
 - Integrate MPL benchmarks with shared logging conventions.
-- Extend the summarizer to compute speedups once multiple variants per workload are available.
+- Extend the summarizer/plot tools to compute speedups once multiple variants per workload are available.

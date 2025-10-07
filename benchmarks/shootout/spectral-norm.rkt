@@ -1,73 +1,56 @@
 #lang racket
 
-(require racket/future
+(require racket/fixnum
+         racket/flonum
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt")
+         "../common/logging.rkt"
+         "../common/parallel.rkt")
 
 (provide spectral-norm)
 
-;; --- Matrix helper ---
+;; Matrix element computation
+(define (A i j)
+  (define ij (fx+ i j))
+  (fl/ 1.0 (fl+ (fl* (fl* (fx->fl ij) (fx->fl (fx+ ij 1))) 0.5)
+                (fx->fl (fx+ i 1)))))
 
-(define (eval-A i j)
-  (define ij (+ i j))
-  (/ 1.0 (+ (* 0.5 ij (+ ij 1)) i 1)))
+;; Apply A to vector x, store in y
+(define (Av x y N workers)
+  (for/parallel workers ([i N])
+    (flvector-set!
+     y i
+     (for/fold ([a 0.0]) ([j (in-range N)])
+       (fl+ a (fl* (flvector-ref x j) (A i j)))))))
 
-(define (make-vector n [fill 0.0])
-  (for/vector ([i n]) fill))
+;; Apply A^T to vector x, store in y
+(define (Atv x y N workers)
+  (for/parallel workers ([i N])
+    (flvector-set!
+     y i
+     (for/fold ([a 0.0]) ([j (in-range N)])
+       (fl+ a (fl* (flvector-ref x j) (A j i)))))))
 
-(define (apply-operator vec workers element-fn)
-  (define n (vector-length vec))
-  (define result (make-vector n))
-  (define worker-count (max 1 workers))
-  (define chunk-size (max 1 (ceiling (/ n worker-count))))
-  (cond
-    [(= worker-count 1)
-     (for ([i n])
-       (define sum 0.0)
-       (for ([j n])
-         (set! sum (+ sum (* (element-fn i j) (vector-ref vec j)))))
-       (vector-set! result i sum))]
-    [else
-     (define ranges (for/list ([start (in-range 0 n chunk-size)])
-                      (cons start (min n (+ start chunk-size)))))
-    (define futures
-      (for/list ([rg (in-list ranges)])
-        (define start (car rg))
-        (define end (cdr rg))
-        (future (λ ()
-                  (define partial (make-vector (- end start)))
-                  (for ([i (in-range start end)] [offset (in-naturals)])
-                    (define sum 0.0)
-                    (for ([j n])
-                      (set! sum (+ sum (* (element-fn i j) (vector-ref vec j)))))
-                    (vector-set! partial offset sum))
-                  (cons start partial)))))
-    (for ([f futures])
-      (define start+partial (touch f))
-      (define start (car start+partial))
-      (define partial (cdr start+partial))
-      (for ([offset (in-naturals)]
-            [value (in-vector partial)])
-        (vector-set! result (+ start offset) value)))])
-  result)
-
-(define (apply-Au vec workers)
-  (apply-operator vec workers eval-A))
-
-(define (apply-Atv vec workers)
-  (apply-operator vec workers (λ (i j) (eval-A j i))))
+;; Apply A^T * A to vector x
+(define (AtAv x y t N workers)
+  (Av x t N workers)
+  (Atv t y N workers))
 
 (define (spectral-norm n #:workers [workers 1] #:iterations [iterations 10])
   (define worker-count (max 1 workers))
-  (define u (for/vector ([i n]) 1.0))
-  (define v (make-vector n 0.0))
+  (define u (make-flvector n 1.0))
+  (define v (make-flvector n))
+  (define t (make-flvector n))
   (for ([iter iterations])
-    (set! v (apply-Au u worker-count))
-    (set! u (apply-Atv v worker-count)))
-  (define vBv (for/sum ([i n]) (* (vector-ref u i) (vector-ref v i))))
-  (define vv (for/sum ([i n]) (* (vector-ref v i) (vector-ref v i))))
-  (sqrt (/ vBv vv)))
+    (AtAv u v t n worker-count)
+    (AtAv v u t n worker-count))
+  (define vBv
+    (for/fold ([sum 0.0]) ([i (in-range n)])
+      (fl+ sum (fl* (flvector-ref u i) (flvector-ref v i)))))
+  (define vv
+    (for/fold ([sum 0.0]) ([i (in-range n)])
+      (fl+ sum (fl* (flvector-ref v i) (flvector-ref v i)))))
+  (flsqrt (fl/ vBv vv)))
 
 (module+ main
   (define n 1000)
@@ -75,6 +58,7 @@
   (define iterations 10)
   (define repeat 1)
   (define log-path #f)
+  (define strategy 'threads)
 
   (void
    (command-line
@@ -84,18 +68,23 @@
      (set! n (parse-positive-integer arg 'spectral-norm))]
     [("--iterations" "-i") arg "Power method iterations"
      (set! iterations (parse-positive-integer arg 'spectral-norm))]
-    [("--workers") arg "Parallel futures"
+    [("--workers") arg "Parallel thread count"
      (set! workers (parse-positive-integer arg 'spectral-norm))]
     [("--repeat") arg "Benchmark repetitions"
      (set! repeat (parse-positive-integer arg 'spectral-norm))]
+    [("--strategy") arg "Parallel strategy: threads or futures"
+     (set! strategy (string->symbol arg))]
     [("--log") arg "Optional S-expression log path"
      (set! log-path arg)]))
+
+  (set-parallel-strategy! strategy)
 
   (define writer (make-log-writer log-path))
   (define metadata (system-metadata))
   (define params (list (list 'n n)
                        (list 'iterations iterations)
-                       (list 'workers workers)))
+                       (list 'workers workers)
+                       (list 'strategy strategy)))
 
   (define sequential-value
     (run-benchmark
@@ -110,7 +99,7 @@
   (run-benchmark
    (λ () (spectral-norm n #:workers workers #:iterations iterations))
    #:name 'spectral-norm
-   #:variant 'parallel
+   #:variant (string->symbol (format "parallel-~a" strategy))
    #:repeat repeat
    #:log-writer writer
    #:params params

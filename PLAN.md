@@ -2,8 +2,25 @@
 
 ## Goals
 - Build a reproducible, extensible benchmarking harness that unifies existing Racket Boyer–Moore (both legacy and improved) and Richards workloads with a broader catalogue of parallel benchmarks.
-- Integrate respected external suites (NAS Parallel Benchmarks, MPL’s Parallel ML Benchmarks, and the Racket shootout benchmarks) to provide coverage of compute, memory, and tasking patterns.
+- Re-implement NAS Parallel Benchmarks in Racket and integrate MPL's Parallel ML Benchmarks and the Racket shootout benchmarks to provide coverage of compute, memory, and tasking patterns.
 - Provide consistent command-line configuration, result capture, and comparative reporting across all workloads.
+
+## Current Status (as of 2025-10-02)
+
+**Completed:**
+- ✅ Core infrastructure (Phases 1-2): Shared CLI, logging, harness, tests
+- ✅ Shootout integration (Phase 3): 6 benchmarks with parallel variants (spectral-norm, binary-trees, n-body, fannkuch-redux, mandelbrot, chameneos)
+- ✅ Visualization tools (Phase 8): Analysis library, summarizer, PNG plotting utility
+- ✅ Unified CLI orchestration (Phase 6): Suite runner with configuration file support
+
+**In Progress:**
+- 🚧 Documentation refinement
+
+**Planned:**
+- ⏳ NAS benchmarks implementation in Racket (Phase 4)
+- ⏳ MPL benchmarks integration (Phase 5)
+
+**Next Priority:** NAS Parallel Benchmarks implementation (Phase 4) - Re-implement selected NAS kernels (EP, IS, CG, etc.) in Racket with sequential and parallel variants.
 
 ## Existing Artifacts Review
 1. `bmbench.rkt` and `bmbench_improved.rkt`: Boyer–Moore majority benchmarks with sequential and parallel variants, CLI-configurable.
@@ -19,8 +36,8 @@
 2. Adopt a results collection format
    - Implement line-oriented S-expression logging for per-run metrics.
    - Add helper library for formatting and summary statistics.
-3. Import external benchmarks
-   - NAS Parallel Benchmarks (focus on C/Fortran kernels wrapped for CLI usage).
+3. Implement and import external benchmarks
+   - NAS Parallel Benchmarks (re-implement selected kernels in Racket with sequential and parallel variants).
    - MPLLang Parallel ML Benchmarks (target selected workloads with minimal dependencies).
 4. Add automation/testing
    - Extend RackUnit suite for sanity checks on new harnesses.
@@ -32,75 +49,58 @@
 ## Detailed Task Breakdown
 
 ### Phase 1 – Repository Restructuring & Common Utilities
-- [ ] Create `benchmarks/` directory with subfolders:
-  - `benchmarks/racket/` (move or symlink current Racket benchmarks for clarity).
-  - `benchmarks/shootout/`, `benchmarks/nas/`, and `benchmarks/mpl/` for external imports.
-- [ ] Implement `benchmarks/common/` module providing:
-  - CLI parsing helpers (shared option definitions, numeric parsing).
-  - `run-benchmark` helper that handles GC, timing, and structured result emission ((benchmark ...) S-expressions).
-  - Seeded RNG utility for deterministic runs.
-- [ ] Refactor `bmbench.rkt`, `bmbench_improved.rkt`, and `richards.rkt` to use shared utilities without breaking current CLI flags (ensure backward compatibility via thin wrappers or updated command-line definitions).
-- [ ] Update tests to import relocated modules (adjust `require` paths) and ensure they still pass.
+- [x] Create `benchmarks/` directory with subfolders for `racket`, `shootout`, `nas`, and `mpl` workloads.
+- [x] Implement `benchmarks/common/` modules providing CLI helpers, benchmarking harness, and deterministic RNG hooks.
+- [x] Refactor existing Racket benchmarks to use shared utilities and maintain CLI compatibility.
+- [x] Update tests to import relocated modules and keep coverage intact.
 
 ### Phase 2 – Result Logging & Reporting
-- [ ] Define `benchmarks/common/logging.rkt` with functions to:
-  - Emit benchmark metadata: benchmark name, implementation tag, CLI parameters, hardware info stub.
-  - Write timing results to stdout and an optional `.sexp` log file (one S-expression per run).
-- [ ] Extend existing benchmarks to optionally log to S-expression files (new `--log` flag defaulting to stdout-only).
-- [ ] Create `benchmarks/tools/summarize-results.rkt` for aggregating S-expression logs (mean, stddev, speedups, etc.).
-- [ ] Document usage in `BENCHMARKS.md` (new file) covering logging convention and summary scripts.
+- [x] Define `benchmarks/common/logging.rkt` for metadata + S-expression logging.
+- [x] Extend existing benchmarks to support a `--log` flag.
+- [x] Create `benchmarks/tools/summarize-results.rkt` (aggregation).
+- [x] Document logging usage in `BENCHMARKS.md`.
 
 ### Phase 3 – Racket Shootout Benchmarks Integration
-- [x] Audit the existing Racket shootout benchmark implementations (e.g., under Racket’s `benchmarks/shootout` directory) and identify parallelizable workloads.
-- [x] Create `benchmarks/shootout/README.md` summarizing included benchmarks, inputs, and any deviations from upstream.
-- [ ] Vendor or submodule the shootout sources under `benchmarks/shootout/src/`, keeping licensing notices intact.
-- [x] Wrap each selected benchmark with a Racket CLI front-end that:
-  - [x] Accepts problem size / iteration parameters consistent with upstream usage.
-  - [x] Emits timing results via the shared S-expression logging helper.
-  - [x] Provides reduced-size configurations suitable for CI smoke tests.
-- [x] Add RackUnit or property-based sanity checks where feasible (e.g., comparing outputs against known reference results for small inputs).
-- [x] Update documentation to describe the shootout subset and any build prerequisites.
+- [x] Audit the Racket shootout workloads and identify parallelizable candidates.
+- [x] Create `benchmarks/shootout/README.md` describing available workloads and differences.
+- [ ] Vendor or submodule upstream sources as needed (`benchmarks/shootout/src/`).
+- [x] Wrap selected benchmarks (spectral norm, binary trees, n-body, fannkuch-redux, mandelbrot, chameneos) with CLI fronts, logging, and smoke configurations.
+- [x] Add sanity tests comparing sequential vs. parallel outputs.
+- [x] Update documentation to describe shootout benchmarks and parameters.
+- [ ] Expand coverage with additional shootout programs (e.g., fasta, regex-dna, k-nucleotide) in future iterations.
 
-### Phase 4 – NAS Parallel Benchmarks Integration
-- [x] Decide target kernels (e.g., EP, MG, FT) balancing implementation effort and coverage. *(Initial tooling targets EP-style executables; additional kernels can reuse the runner.)*
-- [x] Add `benchmarks/nas/README.md` describing benchmark variants and build requirements.
-- [ ] For each chosen NAS kernel:
-  - [ ] Vendor or fetch source (consider git submodule) under `benchmarks/nas/src/`.
-  - [x] Create Racket wrapper to execute a compiled kernel with configurable arguments.
-  - [x] Normalize output to S-expressions via `benchmarks/common/logging.rkt`.
-  - [ ] Provide reduced problem size (e.g., class `S`) for CI smoke tests.
-- [x] Extend `PLAN.md` once integration strategy is validated (note dependencies, compilers needed).
+### Phase 4 – NAS Parallel Benchmarks Implementation
+- [ ] Select initial target kernels (EP - Embarrassingly Parallel, IS - Integer Sort, CG - Conjugate Gradient, etc.) and document in `benchmarks/nas/README.md`.
+- [ ] Implement EP (Embarrassingly Parallel) kernel in Racket with sequential and parallel variants.
+- [ ] Implement IS (Integer Sort) kernel in Racket with sequential and parallel variants.
+- [ ] Implement additional kernels (CG, MG, FT) as time permits.
+- [ ] Add comprehensive tests for each NAS benchmark implementation.
+- [ ] Document NAS benchmark implementations, problem classes, and validation procedures.
 
 ### Phase 5 – MPL Parallel ML Benchmarks Adoption
-- [ ] Mirror repository (git submodule pointing to `github.com/MPLLang/parallel-ml-bench`).
-- [ ] Identify required runtime (MLton, Poly/ML, etc.) and document prerequisites.
-- [ ] Write wrapper scripts to:
-  - [ ] Build selected benchmarks with tuning for local environment.
-  - [ ] Execute with configurable input sizes.
-  - [ ] Capture timing data and emit S-expressions via logging helper.
-- [ ] Provide translation layer if outputs are not easily parseable (e.g., parse textual results).
-- [ ] Add smoke-test configuration using smallest dataset.
+- [ ] Research MPLLang parallel-ml-bench repository and identify suitable benchmarks.
+- [ ] Identify required runtime (MLton, Poly/ML, MPL compiler) and document prerequisites.
+- [ ] Create `benchmarks/mpl/README.md` describing integration approach.
+- [ ] Write Racket wrapper (`benchmarks/mpl/run.rkt`) to execute compiled MPL benchmarks and log S-expressions.
+- [ ] Provide parsing layer for MPL benchmark outputs if needed.
+- [ ] Add example configurations for quick/standard benchmark runs.
 
 ### Phase 6 – Unified CLI & Orchestration
-- [ ] Implement top-level `benchmarks/run-suite.rkt` enabling:
-  - Selection of benchmarks via `--suite racket|shootout|nas|mpl|all`.
-  - Parallel execution scheduling (control concurrency to avoid interference).
-  - Aggregated reporting (speedups, comparisons between baseline and improved versions).
-- [ ] Add configuration file support (`benchmarks/config/*.sexp`) to define canonical runs.
-- [ ] Provide example configs for “quick”, “standard”, and “stress” suites.
+- [x] Implement top-level `benchmarks/run-suite.rkt` enabling `--suite racket|shootout|nas|mpl|all` selection.
+- [x] Add configuration file support (`benchmarks/config/*.sexp`) for canonical runs.
+- [x] Provide example configs for "quick", "standard", and "stress" suites.
 
-### Phase 7 – Testing, CI, and Documentation
-- [ ] Extend RackUnit to cover logging helpers and CLI parsing edge cases (invalid parameters, missing dependencies).
-- [ ] Add lint/test job to CI pipeline executing `raco test tests` and smoke benchmarks with reduced sizes (guarded to skip if dependencies absent).
-- [ ] Update documentation:
-  - `AGENTS.md`: mention `benchmarks/` layout, logging expectations, external dependency management.
-  - New `BENCHMARKS.md` providing setup instructions for Racket shootout, NAS, and MPL suites, environment variables, and troubleshooting.
-- [ ] Provide user-facing examples in README (or dedicated doc) illustrating combined benchmark runs and sample S-expression output.
+### Phase 8 – Visualization & Reporting
+- [x] Create reusable analysis helpers for log ingestion (`benchmarks/tools/analysis.rkt`).
+- [x] Build `benchmarks/tools/plot-results.rkt` using the `plot` library to render benchmark summaries.
+- [x] Document plotting workflow and sample commands.
+- [ ] Integrate plotting into future automation (e.g., suite runner reports).
 
 ## Considerations & Open Questions
-- Dependency Management: Determine packaging approach (submodules vs. tarball snapshots) to keep repository manageable.
-- Toolchain Availability: Document required compilers (e.g., Fortran for NAS) and ML runtimes, with detection scripts that gracefully skip unavailable benchmarks.
-- Licensing: Review NAS and MPL licenses to ensure compliance with redistribution and documentation.
+- NAS Implementation Fidelity: Ensure Racket implementations of NAS kernels maintain algorithmic equivalence with reference implementations while leveraging Racket's parallelism primitives (futures, places).
+- Validation: Implement verification procedures to validate correctness of NAS implementations against known checksums and outputs.
+- Toolchain Availability: Document required ML runtimes for MPL benchmarks, with detection scripts that gracefully skip unavailable benchmarks.
+- Licensing: Review NAS and MPL specifications to ensure compliance with redistribution and documentation.
 - Hardware Metrics: Consider optional integration with system profilers (perf, Linux perf events) for advanced metrics in future iterations.
 
 ## Success Criteria

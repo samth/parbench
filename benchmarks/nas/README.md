@@ -1,21 +1,38 @@
-# NAS Parallel Benchmarks Integration
+# NAS Parallel Benchmarks Implementation
 
-This directory provides helper scripts for running pre-built NAS Parallel Benchmark (NPB) binaries under the shared logging infrastructure. Because the original NAS sources are licensed separately, they are **not** vendored here. To use these helpers:
+This directory contains Racket implementations of selected NAS Parallel Benchmark (NPB) kernels. Rather than wrapping external C/Fortran executables, we re-implement the algorithmic kernels directly in Racket to enable comparative analysis of Racket's parallel programming constructs (futures, places) against reference implementations.
 
-1. Obtain the NAS Parallel Benchmarks (version 3.x or later) from the official repository.
-2. Build the desired kernels (e.g., `ep.A.x`, `mg.B.x`) with your preferred toolchain.
-3. Invoke `benchmarks/nas/run.rkt` with the `--binary` flag pointing to the compiled executable and optional `--arg` flags to select class sizes or thread counts.
+## Implemented Benchmarks
 
-Example:
+_(Coming soon)_
+
+Each benchmark will provide:
+- Sequential and parallel variants using Racket's futures and/or places
+- CLI interface with problem class selection (S, W, A, B, C)
+- Verification checksums to validate correctness
+- Integration with the shared logging infrastructure
+
+## Planned Kernels
+
+1. **EP (Embarrassingly Parallel)**: Generate independent Gaussian random deviates
+2. **IS (Integer Sort)**: Integer bucket sort with all-to-all communication pattern
+3. **CG (Conjugate Gradient)**: Sparse linear system solver
+4. **MG (Multi-Grid)**: Multi-grid method for Poisson equation
+5. **FT (Fourier Transform)**: 3D FFT-based PDE solver
+
+## Usage Example
+
+_(Coming soon)_
 
 ```bash
-racket benchmarks/nas/run.rkt \
-  --binary /path/to/npb/bin/ep.A.x \
-  --label ep-A \
-  --arg -t \
-  --arg 4 \
+racket benchmarks/nas/ep.rkt \
+  --class A \
+  --variant parallel \
   --repeat 3 \
   --log logs/nas-ep.sexp
 ```
 
-The runner will time each invocation, emit `(benchmark …)` S-expression records, and enforce non-zero exit status checks. Additional kernels can be automated by creating thin wrappers (or config presets) that pass the appropriate arguments and environment variables.
+## References
+
+- [NAS Parallel Benchmarks Specification](https://www.nas.nasa.gov/software/npb.html)
+- Problem classes define computational scale (S < W < A < B < C < D)

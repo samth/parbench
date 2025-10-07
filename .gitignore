@@ -1,0 +1,28 @@
+# Log files
+logs/
+*.log
+
+# Racket compiled files
+compiled/
+*.zo
+*.dep
+
+# Backup files
+*~
+*.bak
+*.swp
+*.swo
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.sublime-*
+
+# Results and output
+results/
+*.csv
+*.dat
