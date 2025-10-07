@@ -11,4 +11,7 @@
   (nbody (--n "1000000" --workers "8" --repeat "5"))
   (fannkuch-redux (--n "10" --workers "1" --repeat "5"))
   (mandelbrot (--n "1000" --workers "8" --repeat "5"))
-  (chameneos (--n "10000" --repeat "5"))))
+  (chameneos (--n "10000" --repeat "5"))
+  (histogram (--n "10000000" --buckets "256" --workers "8" --repeat "5"))
+  (integer-sort (--n "10000000" --range "1000000" --workers "8" --repeat "5"))
+  (bfs (--n "10000" --edge-prob "0.001" --source "0" --workers "8" --repeat "5"))))

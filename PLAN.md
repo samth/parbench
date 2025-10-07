@@ -2,7 +2,7 @@
 
 ## Goals
 - Build a reproducible, extensible benchmarking harness that unifies existing Racket Boyer–Moore (both legacy and improved) and Richards workloads with a broader catalogue of parallel benchmarks.
-- Re-implement NAS Parallel Benchmarks in Racket and integrate MPL's Parallel ML Benchmarks and the Racket shootout benchmarks to provide coverage of compute, memory, and tasking patterns.
+- Re-implement NAS Parallel Benchmarks and MPL Parallel ML Benchmarks in Racket, and integrate the Racket shootout benchmarks to provide coverage of compute, memory, and tasking patterns.
 - Provide consistent command-line configuration, result capture, and comparative reporting across all workloads.
 
 ## Current Status (as of 2025-10-02)
@@ -15,10 +15,11 @@
 
 **In Progress:**
 - 🚧 Documentation refinement
+- 🚧 MPL benchmarks re-implementation (Phase 5) - 3 benchmarks implemented: histogram, integer-sort, bfs
 
 **Planned:**
 - ⏳ NAS benchmarks implementation in Racket (Phase 4)
-- ⏳ MPL benchmarks integration (Phase 5)
+- ⏳ Additional MPL benchmarks (MIS, MSF, suffix array, convex hull, etc.)
 
 **Next Priority:** NAS Parallel Benchmarks implementation (Phase 4) - Re-implement selected NAS kernels (EP, IS, CG, etc.) in Racket with sequential and parallel variants.
 
@@ -36,9 +37,9 @@
 2. Adopt a results collection format
    - Implement line-oriented S-expression logging for per-run metrics.
    - Add helper library for formatting and summary statistics.
-3. Implement and import external benchmarks
+3. Re-implement external benchmarks in Racket
    - NAS Parallel Benchmarks (re-implement selected kernels in Racket with sequential and parallel variants).
-   - MPLLang Parallel ML Benchmarks (target selected workloads with minimal dependencies).
+   - MPL Parallel ML Benchmarks (re-implement selected algorithms from the MPL benchmark suite in Racket with sequential and parallel variants).
 4. Add automation/testing
    - Extend RackUnit suite for sanity checks on new harnesses.
    - Provide smoke-test targets using reduced problem sizes.
@@ -77,13 +78,19 @@
 - [ ] Add comprehensive tests for each NAS benchmark implementation.
 - [ ] Document NAS benchmark implementations, problem classes, and validation procedures.
 
-### Phase 5 – MPL Parallel ML Benchmarks Adoption
-- [ ] Research MPLLang parallel-ml-bench repository and identify suitable benchmarks.
-- [ ] Identify required runtime (MLton, Poly/ML, MPL compiler) and document prerequisites.
-- [ ] Create `benchmarks/mpl/README.md` describing integration approach.
-- [ ] Write Racket wrapper (`benchmarks/mpl/run.rkt`) to execute compiled MPL benchmarks and log S-expressions.
-- [ ] Provide parsing layer for MPL benchmark outputs if needed.
-- [ ] Add example configurations for quick/standard benchmark runs.
+### Phase 5 – MPL Parallel ML Benchmarks Re-implementation
+**IMPORTANT:** Re-implement selected MPL benchmarks in Racket (do NOT wrap the MPL compiler). The goal is to have Racket implementations of the algorithms from the MPL benchmark suite to compare Racket's parallel programming capabilities.
+
+- [x] Research MPLLang parallel-ml-bench repository and identify suitable benchmarks for re-implementation in Racket.
+- [x] Create `benchmarks/mpl/README.md` describing which benchmarks are implemented and their algorithmic approach.
+- [x] Re-implement selected MPL benchmarks as Racket programs with sequential and parallel variants.
+  - [x] Histogram: parallel counting with partitioned reduction
+  - [x] Integer Sort: parallel counting sort for bounded ranges
+  - [x] BFS: level-synchronous parallel breadth-first search
+  - [ ] Additional benchmarks: MIS, MSF, suffix array, convex hull, etc.
+- [x] Add verification procedures to ensure algorithmic correctness.
+- [x] Add example configurations for quick/standard benchmark runs.
+- [x] Integrate MPL benchmarks into run-suite.rkt.
 
 ### Phase 6 – Unified CLI & Orchestration
 - [x] Implement top-level `benchmarks/run-suite.rkt` enabling `--suite racket|shootout|nas|mpl|all` selection.
@@ -98,8 +105,8 @@
 
 ## Considerations & Open Questions
 - NAS Implementation Fidelity: Ensure Racket implementations of NAS kernels maintain algorithmic equivalence with reference implementations while leveraging Racket's parallelism primitives (futures, places).
-- Validation: Implement verification procedures to validate correctness of NAS implementations against known checksums and outputs.
-- Toolchain Availability: Document required ML runtimes for MPL benchmarks, with detection scripts that gracefully skip unavailable benchmarks.
+- MPL Implementation Fidelity: Ensure Racket re-implementations of MPL benchmarks maintain algorithmic equivalence with the MPL reference implementations while leveraging Racket's parallelism primitives.
+- Validation: Implement verification procedures to validate correctness of NAS and MPL implementations against known outputs and checksums where available.
 - Licensing: Review NAS and MPL specifications to ensure compliance with redistribution and documentation.
 - Hardware Metrics: Consider optional integration with system profilers (perf, Linux perf events) for advanced metrics in future iterations.
 

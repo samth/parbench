@@ -27,7 +27,9 @@
   '()) ; NAS benchmarks require external compilation
 
 (define mpl-benchmarks
-  '()) ; MPL benchmarks not yet integrated
+  '((histogram "mpl/histogram.rkt" (--n "1000000" --buckets "256" --workers "4" --repeat "3"))
+    (integer-sort "mpl/integer-sort.rkt" (--n "1000000" --range "100000" --workers "4" --repeat "3"))
+    (bfs "mpl/bfs.rkt" (--n "10000" --edge-prob "0.001" --source "0" --workers "4" --repeat "3"))))
 
 ;; Get benchmark suite by name
 (define (get-suite name)
