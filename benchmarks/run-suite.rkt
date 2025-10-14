@@ -21,15 +21,22 @@
     (nbody "shootout/nbody.rkt" (--n "100000" --workers "4" --repeat "3"))
     (fannkuch-redux "shootout/fannkuch-redux.rkt" (--n "9" --workers "1" --repeat "3"))
     (mandelbrot "shootout/mandelbrot.rkt" (--n "500" --workers "4" --repeat "3"))
+    (fasta "shootout/fasta.rkt" (--n "100000" --workers "4" --repeat "3"))
+    (regex-dna "shootout/regex-dna.rkt" (--n "100000" --workers "4" --repeat "3"))
+    (k-nucleotide "shootout/k-nucleotide.rkt" (--n "100000" --workers "4" --repeat "3"))
     (chameneos "shootout/chameneos.rkt" (--n "5000" --repeat "3"))))
 
 (define nas-benchmarks
-  '()) ; NAS benchmarks require external compilation
+  '((nas-ep "nas/ep.rkt" (--class "S" --workers "4" --repeat "3"))))
 
 (define mpl-benchmarks
   '((histogram "mpl/histogram.rkt" (--n "1000000" --buckets "256" --workers "4" --repeat "3"))
     (integer-sort "mpl/integer-sort.rkt" (--n "1000000" --range "100000" --workers "4" --repeat "3"))
-    (bfs "mpl/bfs.rkt" (--n "10000" --edge-prob "0.001" --source "0" --workers "4" --repeat "3"))))
+    (bfs "mpl/bfs.rkt" (--n "10000" --edge-prob "0.001" --source "0" --workers "4" --repeat "3"))
+    (mis "mpl/mis.rkt" (--n "5000" --degree "10" --workers "4" --repeat "3"))
+    (msf "mpl/msf.rkt" (--n "1000" --degree "10" --workers "4" --repeat "3"))
+    (suffix-array "mpl/suffix-array.rkt" (--n "50000" --alphabet "4" --workers "4" --repeat "3"))
+    (convex-hull "mpl/convex-hull.rkt" (--n "10000" --distribution "uniform-circle" --workers "4" --repeat "3"))))
 
 ;; Get benchmark suite by name
 (define (get-suite name)

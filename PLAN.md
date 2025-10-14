@@ -15,11 +15,10 @@
 
 **In Progress:**
 - 🚧 Documentation refinement
-- 🚧 MPL benchmarks re-implementation (Phase 5) - 3 benchmarks implemented: histogram, integer-sort, bfs
+- 🚧 NAS benchmarks implementation in Racket (Phase 4) - EP kernel completed
 
-**Planned:**
-- ⏳ NAS benchmarks implementation in Racket (Phase 4)
-- ⏳ Additional MPL benchmarks (MIS, MSF, suffix array, convex hull, etc.)
+**Completed Recently:**
+- ✅ MPL benchmarks re-implementation (Phase 5) - 7 benchmarks implemented: histogram, integer-sort, bfs, mis, msf, suffix-array, convex-hull
 
 **Next Priority:** NAS Parallel Benchmarks implementation (Phase 4) - Re-implement selected NAS kernels (EP, IS, CG, etc.) in Racket with sequential and parallel variants.
 
@@ -64,18 +63,18 @@
 ### Phase 3 – Racket Shootout Benchmarks Integration
 - [x] Audit the Racket shootout workloads and identify parallelizable candidates.
 - [x] Create `benchmarks/shootout/README.md` describing available workloads and differences.
-- [ ] Vendor or submodule upstream sources as needed (`benchmarks/shootout/src/`).
+- [x] Vendor or submodule upstream sources as needed (`benchmarks/shootout/src/`).
 - [x] Wrap selected benchmarks (spectral norm, binary trees, n-body, fannkuch-redux, mandelbrot, chameneos) with CLI fronts, logging, and smoke configurations.
 - [x] Add sanity tests comparing sequential vs. parallel outputs.
 - [x] Update documentation to describe shootout benchmarks and parameters.
-- [ ] Expand coverage with additional shootout programs (e.g., fasta, regex-dna, k-nucleotide) in future iterations.
+- [x] Expand coverage with additional shootout programs (e.g., fasta, regex-dna, k-nucleotide) in future iterations.
 
 ### Phase 4 – NAS Parallel Benchmarks Implementation
-- [ ] Select initial target kernels (EP - Embarrassingly Parallel, IS - Integer Sort, CG - Conjugate Gradient, etc.) and document in `benchmarks/nas/README.md`.
-- [ ] Implement EP (Embarrassingly Parallel) kernel in Racket with sequential and parallel variants.
+- [x] Select initial target kernels (EP - Embarrassingly Parallel, IS - Integer Sort, CG - Conjugate Gradient, etc.) and document in `benchmarks/nas/README.md`.
+- [x] Implement EP (Embarrassingly Parallel) kernel in Racket with sequential and parallel variants.
 - [ ] Implement IS (Integer Sort) kernel in Racket with sequential and parallel variants.
 - [ ] Implement additional kernels (CG, MG, FT) as time permits.
-- [ ] Add comprehensive tests for each NAS benchmark implementation.
+- [x] Add comprehensive tests for each NAS benchmark implementation.
 - [ ] Document NAS benchmark implementations, problem classes, and validation procedures.
 
 ### Phase 5 – MPL Parallel ML Benchmarks Re-implementation
@@ -87,7 +86,10 @@
   - [x] Histogram: parallel counting with partitioned reduction
   - [x] Integer Sort: parallel counting sort for bounded ranges
   - [x] BFS: level-synchronous parallel breadth-first search
-  - [ ] Additional benchmarks: MIS, MSF, suffix array, convex hull, etc.
+  - [x] MIS: Maximal Independent Set using Luby's randomized parallel algorithm
+  - [x] MSF: Minimum Spanning Forest using Borůvka's algorithm
+  - [x] Suffix Array: parallel prefix-doubling algorithm
+  - [x] Convex Hull: parallel QuickHull algorithm
 - [x] Add verification procedures to ensure algorithmic correctness.
 - [x] Add example configurations for quick/standard benchmark runs.
 - [x] Integrate MPL benchmarks into run-suite.rkt.
