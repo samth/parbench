@@ -23,9 +23,13 @@ benchmarks/
     fannkuch-redux.rkt    ; fannkuch-redux permutation benchmark
     mandelbrot.rkt        ; mandelbrot set fractal generation
     chameneos.rkt         ; chameneos-redux thread coordination benchmark
+    fasta.rkt             ; FASTA sequence generation benchmark
+    regex-dna.rkt         ; Regex DNA pattern matching benchmark
+    k-nucleotide.rkt      ; K-nucleotide frequency analysis benchmark
   nas/
     README.md             ; instructions + runner for NAS binaries
-    run.rkt               ; wrapper that executes existing NAS executables
+    common/               ; shared problem-class metadata
+    ep.rkt                ; Embarrassingly Parallel kernel (seq + parallel)
   tools/
     analysis.rkt          ; shared log aggregation helpers
     summarize-results.rkt ; S-expression log aggregator
@@ -108,6 +112,27 @@ racket benchmarks/shootout/chameneos.rkt \
   --n 10000 \
   --repeat 3 \
   --log logs/chameneos.sexp
+
+# FASTA (shootout) benchmark
+racket benchmarks/shootout/fasta.rkt \
+  --n 150000 \
+  --workers 4 \
+  --repeat 3 \
+  --log logs/fasta.sexp
+
+# Regex DNA (shootout) benchmark
+racket benchmarks/shootout/regex-dna.rkt \
+  --n 150000 \
+  --workers 4 \
+  --repeat 3 \
+  --log logs/regex-dna.sexp
+
+# K-Nucleotide (shootout) benchmark
+racket benchmarks/shootout/k-nucleotide.rkt \
+  --n 150000 \
+  --workers 4 \
+  --repeat 3 \
+  --log logs/k-nucleotide.sexp
 ```
 
 Key switches (all optional):
@@ -176,16 +201,32 @@ Metrics supported: `real` (default) or `cpu`. The script computes means across a
 
 ### NAS Parallel Benchmarks
 
+The NAS suite provides Racket implementations of selected NPB kernels:
+
 ```bash
-racket benchmarks/nas/run.rkt \
-  --binary /path/to/npb/bin/ep.A.x \
-  --arg -t \
-  --arg 4 \
+# EP (Embarrassingly Parallel) benchmark
+racket benchmarks/nas/ep.rkt \
+  --class A \
+  --workers 8 \
   --repeat 3 \
   --log logs/nas-ep.sexp
+
+# IS (Integer Sort) benchmark
+racket benchmarks/nas/is.rkt \
+  --class W \
+  --workers 4 \
+  --repeat 3 \
+  --log logs/nas-is.sexp
+
+# CG (Conjugate Gradient) benchmark
+racket benchmarks/nas/cg.rkt \
+  --class S \
+  --workers 4 \
+  --repeat 3 \
+  --log logs/nas-cg.sexp
 ```
 
-Use `--arg` repeatedly to pass kernel-specific parameters (you can also supply extra positional arguments at the end). Specify `--cwd` when the executable must run from its build directory. The runner enforces a successful exit status and records timings with the supplied `--label` (defaulting to the binary name).
+Each benchmark supports problem classes S (small), W (workload), A, B, and C (increasing computational intensity). Use `--class` to select the problem size, `--workers` for parallel execution, and `--repeat` to run multiple iterations for statistical averaging.
 
 ## Running Multiple Benchmarks
 
