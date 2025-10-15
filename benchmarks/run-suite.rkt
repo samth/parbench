@@ -21,10 +21,13 @@
     (nbody "shootout/nbody.rkt" (--n "100000" --workers "4" --repeat "3"))
     (fannkuch-redux "shootout/fannkuch-redux.rkt" (--n "9" --workers "1" --repeat "3"))
     (mandelbrot "shootout/mandelbrot.rkt" (--n "500" --workers "4" --repeat "3"))
+    (fasta "shootout/fasta.rkt" (--n "100000" --workers "4" --repeat "3"))
+    (regex-dna "shootout/regex-dna.rkt" (--n "100000" --workers "4" --repeat "3"))
+    (k-nucleotide "shootout/k-nucleotide.rkt" (--n "100000" --workers "4" --repeat "3"))
     (chameneos "shootout/chameneos.rkt" (--n "5000" --repeat "3"))))
 
 (define nas-benchmarks
-  '()) ; NAS benchmarks require external compilation
+  '((nas-ep "nas/ep.rkt" (--class "S" --workers "4" --repeat "3"))))
 
 (define mpl-benchmarks
   '((histogram "mpl/histogram.rkt" (--n "1000000" --buckets "256" --workers "4" --repeat "3"))
