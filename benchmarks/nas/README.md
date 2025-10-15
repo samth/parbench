@@ -27,6 +27,7 @@ benchmarks/nas/
     verification.rkt ; shared checksum helpers
   ep.rkt             ; EP benchmark driver (seq/parallel)
   is.rkt             ; Integer Sort driver
+  cg.rkt             ; Conjugate Gradient driver
   ...
 ```
 

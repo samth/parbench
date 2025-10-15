@@ -15,16 +15,16 @@
 
 **In Progress:**
 - 🚧 Documentation refinement
-- 🚧 MPL benchmarks re-implementation (Phase 5) - 3 benchmarks implemented: histogram, integer-sort, bfs
 
-**Completed (Phase 4):**
-- ✅ NAS benchmarks implementation in Racket - EP, IS, and CG kernels completed
+**Completed Recently:**
+- ✅ NAS benchmarks implementation in Racket (Phase 4) - EP, IS, and CG kernels completed
+- ✅ MPL benchmarks re-implementation (Phase 5) - 7 benchmarks implemented: histogram, integer-sort, bfs, mis, msf, suffix-array, convex-hull
+- ✅ Shootout benchmarks expansion - Added fasta, regex-dna, k-nucleotide
 
 **Planned:**
 - ⏳ Additional NAS benchmarks (MG, FT) as stretch goals
-- ⏳ Additional MPL benchmarks (MIS, MSF, suffix array, convex hull, etc.)
 
-**Next Priority:** Integration of completed NAS benchmarks into run-suite.rkt and comprehensive testing.
+**Next Priority:** Integration and comprehensive testing of all benchmark suites.
 
 ## Existing Artifacts Review
 1. `bmbench.rkt` and `bmbench_improved.rkt`: Boyer–Moore majority benchmarks with sequential and parallel variants, CLI-configurable.
@@ -91,7 +91,10 @@
   - [x] Histogram: parallel counting with partitioned reduction
   - [x] Integer Sort: parallel counting sort for bounded ranges
   - [x] BFS: level-synchronous parallel breadth-first search
-  - [ ] Additional benchmarks: MIS, MSF, suffix array, convex hull, etc.
+  - [x] MIS: Maximal Independent Set using Luby's randomized parallel algorithm
+  - [x] MSF: Minimum Spanning Forest using Borůvka's algorithm
+  - [x] Suffix Array: parallel prefix-doubling algorithm
+  - [x] Convex Hull: parallel QuickHull algorithm
 - [x] Add verification procedures to ensure algorithmic correctness.
 - [x] Add example configurations for quick/standard benchmark runs.
 - [x] Integrate MPL benchmarks into run-suite.rkt.
