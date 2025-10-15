@@ -26,6 +26,9 @@
       (list (string->number (first parts))
             (string->number (second parts)))))
 
+  (when (null? edge-pairs)
+    (error 'read-graph-edgelist "No edges found in file"))
+
   ;; Find max vertex id
   (define n (add1 (apply max (flatten edge-pairs))))
 
@@ -156,6 +159,8 @@
 
 ;; Generate random graph (Erdős-Rényi model)
 (define (generate-random-graph n avg-degree seed)
+  (when (< n 2)
+    (error 'generate-random-graph "need at least 2 vertices, got ~a" n))
   (random-seed seed)
   (define p (/ avg-degree (sub1 n)))
   (define adj-lists (make-vector n null))

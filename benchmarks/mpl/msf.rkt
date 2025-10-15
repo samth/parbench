@@ -27,6 +27,9 @@
             (string->number (second parts))
             (string->number (third parts)))))
 
+  (when (null? edge-triples)
+    (error 'read-weighted-graph "No edges found in file"))
+
   ;; Find max vertex id
   (define n (add1 (apply max (map (λ (e) (max (first e) (second e))) edge-triples))))
 
@@ -194,6 +197,8 @@
 
 ;; Generate random weighted graph
 (define (generate-random-weighted-graph n avg-degree seed)
+  (when (< n 2)
+    (error 'generate-random-weighted-graph "need at least 2 vertices, got ~a" n))
   (random-seed seed)
   (define p (/ avg-degree (sub1 n)))
   (define adj-lists (make-vector n null))
