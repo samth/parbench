@@ -15,11 +15,10 @@
 
 **In Progress:**
 - 🚧 Documentation refinement
-- 🚧 MPL benchmarks re-implementation (Phase 5) - 3 benchmarks implemented: histogram, integer-sort, bfs
+- 🚧 NAS benchmarks implementation in Racket (Phase 4) - EP kernel completed
 
-**Planned:**
-- ⏳ NAS benchmarks implementation in Racket (Phase 4)
-- ⏳ Additional MPL benchmarks (MIS, MSF, suffix array, convex hull, etc.)
+**Completed Recently:**
+- ✅ MPL benchmarks re-implementation (Phase 5) - 7 benchmarks implemented: histogram, integer-sort, bfs, mis, msf, suffix-array, convex-hull
 
 **Next Priority:** NAS Parallel Benchmarks implementation (Phase 4) - Re-implement selected NAS kernels (EP, IS, CG, etc.) in Racket with sequential and parallel variants.
 
@@ -87,7 +86,10 @@
   - [x] Histogram: parallel counting with partitioned reduction
   - [x] Integer Sort: parallel counting sort for bounded ranges
   - [x] BFS: level-synchronous parallel breadth-first search
-  - [ ] Additional benchmarks: MIS, MSF, suffix array, convex hull, etc.
+  - [x] MIS: Maximal Independent Set using Luby's randomized parallel algorithm
+  - [x] MSF: Minimum Spanning Forest using Borůvka's algorithm
+  - [x] Suffix Array: parallel prefix-doubling algorithm
+  - [x] Convex Hull: parallel QuickHull algorithm
 - [x] Add verification procedures to ensure algorithmic correctness.
 - [x] Add example configurations for quick/standard benchmark runs.
 - [x] Integrate MPL benchmarks into run-suite.rkt.

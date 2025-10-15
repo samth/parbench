@@ -65,6 +65,79 @@ The MPL parallel-ml-bench suite consists of sophisticated parallel benchmarks po
 - `--source <v>`: Source vertex (default: 0)
 - `--workers <count>`: Parallel worker threads
 
+### Maximal Independent Set - MIS (mis.rkt)
+**Problem:** Find a maximal independent set in an undirected graph (a set of vertices where no two are adjacent, and no vertex can be added while maintaining this property).
+
+**Input:** Graph (adjacency list)
+**Output:** List of vertex indices in the MIS
+**Complexity:** O(|V| + |E|) work expected, O(log |V|) span expected (randomized)
+
+**Variants:**
+- Sequential: Greedy algorithm
+- Parallel: Luby's randomized parallel algorithm
+
+**Parameters:**
+- `--n <size>`: Number of vertices (for random graph generation)
+- `--degree <avg>`: Average degree (for random graph generation)
+- `--graph <file>`: Graph input file (edge list format)
+- `--workers <count>`: Parallel worker threads
+- `--seed <n>`: Random seed
+
+### Minimum Spanning Forest - MSF (msf.rkt)
+**Problem:** Find a minimum spanning forest of a weighted undirected graph (minimum spanning tree for each connected component).
+
+**Input:** Weighted graph (adjacency list with weights)
+**Output:** List of edges in the MSF
+**Complexity:** O(|E| log |V|) work, O(log² |V|) span expected
+
+**Variants:**
+- Sequential: Kruskal's algorithm with union-find
+- Parallel: Borůvka's algorithm
+
+**Parameters:**
+- `--n <size>`: Number of vertices (for random graph generation)
+- `--degree <avg>`: Average degree (for random graph generation)
+- `--graph <file>`: Weighted graph input file (format: u v weight)
+- `--workers <count>`: Parallel worker threads
+- `--seed <n>`: Random seed
+
+### Suffix Array (suffix-array.rkt)
+**Problem:** Construct a suffix array of a text string (lexicographically sorted array of all suffixes).
+
+**Input:** Text string
+**Output:** Suffix array (vector of starting positions)
+**Complexity:** O(n log n) work, O(log² n) span
+
+**Variants:**
+- Sequential: Prefix-doubling algorithm
+- Parallel: Parallel prefix-doubling with parallel sorting
+
+**Parameters:**
+- `--n <size>`: Text length (for random generation)
+- `--alphabet <size>`: Alphabet size (for random generation)
+- `--text <file>`: Text input file
+- `--workers <count>`: Parallel worker threads
+- `--seed <n>`: Random seed
+
+### Convex Hull (convex-hull.rkt)
+**Problem:** Find the convex hull of a set of 2D points (smallest convex polygon containing all points).
+
+**Input:** List of 2D points
+**Output:** List of hull vertices in counter-clockwise order
+**Complexity:** O(n log n) work expected, O(log² n) span expected
+
+**Variants:**
+- Sequential: QuickHull algorithm
+- Parallel: Parallel QuickHull with divide-and-conquer
+
+**Parameters:**
+- `--n <size>`: Number of points (for random generation)
+- `--distribution <type>`: Point distribution (uniform-circle, uniform-square, circle-perimeter)
+- `--points <file>`: Points input file (format: x y per line)
+- `--workers <count>`: Parallel worker threads
+- `--threshold <size>`: Sequential threshold for parallel algorithm
+- `--seed <n>`: Random seed
+
 ## Usage
 
 ### Running Individual Benchmarks
@@ -93,6 +166,38 @@ racket benchmarks/mpl/bfs.rkt \
   --workers 8 \
   --repeat 3 \
   --log logs/mpl-bfs.sexp
+
+# MIS
+racket benchmarks/mpl/mis.rkt \
+  --n 10000 \
+  --degree 10 \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/mpl-mis.sexp
+
+# MSF
+racket benchmarks/mpl/msf.rkt \
+  --n 1000 \
+  --degree 10 \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/mpl-msf.sexp
+
+# Suffix Array
+racket benchmarks/mpl/suffix-array.rkt \
+  --n 100000 \
+  --alphabet 4 \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/mpl-suffix-array.sexp
+
+# Convex Hull
+racket benchmarks/mpl/convex-hull.rkt \
+  --n 10000 \
+  --distribution uniform-circle \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/mpl-convex-hull.sexp
 ```
 
 ### Running via Suite Runner
@@ -138,13 +243,12 @@ Key differences from the MPL implementations:
 
 ## Future Work
 
-Additional benchmarks planned for re-implementation:
+Additional benchmarks that could be implemented in future iterations:
 
-- **MIS** (Maximal Independent Set): Graph algorithm
-- **MSF** (Minimum Spanning Forest): Weighted graph algorithm
-- **Suffix Array**: Text processing
-- **Convex Hull**: Computational geometry
-- **N-body**: Scientific computing
+- **N-body**: Scientific computing (gravitational or molecular dynamics simulation)
+- **Delaunay Triangulation**: Computational geometry
+- **Ray Casting**: Graphics and computational geometry
+- **K-Nearest Neighbors**: Spatial data structures and search
 
 ## References
 

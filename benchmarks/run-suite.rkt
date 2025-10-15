@@ -32,7 +32,11 @@
 (define mpl-benchmarks
   '((histogram "mpl/histogram.rkt" (--n "1000000" --buckets "256" --workers "4" --repeat "3"))
     (integer-sort "mpl/integer-sort.rkt" (--n "1000000" --range "100000" --workers "4" --repeat "3"))
-    (bfs "mpl/bfs.rkt" (--n "10000" --edge-prob "0.001" --source "0" --workers "4" --repeat "3"))))
+    (bfs "mpl/bfs.rkt" (--n "10000" --edge-prob "0.001" --source "0" --workers "4" --repeat "3"))
+    (mis "mpl/mis.rkt" (--n "5000" --degree "10" --workers "4" --repeat "3"))
+    (msf "mpl/msf.rkt" (--n "1000" --degree "10" --workers "4" --repeat "3"))
+    (suffix-array "mpl/suffix-array.rkt" (--n "50000" --alphabet "4" --workers "4" --repeat "3"))
+    (convex-hull "mpl/convex-hull.rkt" (--n "10000" --distribution "uniform-circle" --workers "4" --repeat "3"))))
 
 ;; Get benchmark suite by name
 (define (get-suite name)
