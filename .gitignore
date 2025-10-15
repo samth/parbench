@@ -1,6 +1,9 @@
 # Log files
 logs/
+demo-logs/
+test-logs/
 *.log
+*.sexp
 
 # Racket compiled files
 compiled/
@@ -26,3 +29,5 @@ Thumbs.db
 results/
 *.csv
 *.dat
+*.html
+!docs/*.html

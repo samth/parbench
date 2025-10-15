@@ -23,13 +23,18 @@ benchmarks/
     fannkuch-redux.rkt    ; fannkuch-redux permutation benchmark
     mandelbrot.rkt        ; mandelbrot set fractal generation
     chameneos.rkt         ; chameneos-redux thread coordination benchmark
+    fasta.rkt             ; FASTA sequence generation benchmark
+    regex-dna.rkt         ; Regex DNA pattern matching benchmark
+    k-nucleotide.rkt      ; K-nucleotide frequency analysis benchmark
   nas/
     README.md             ; instructions + runner for NAS binaries
-    run.rkt               ; wrapper that executes existing NAS executables
+    common/               ; shared problem-class metadata
+    ep.rkt                ; Embarrassingly Parallel kernel (seq + parallel)
   tools/
     analysis.rkt          ; shared log aggregation helpers
     summarize-results.rkt ; S-expression log aggregator
     plot-results.rkt      ; PNG plotting utility powered by `plot`
+    visualize.rkt         ; interactive HTML dashboard generator
 ```
 
 ## Running the Racket Benchmarks
@@ -108,6 +113,27 @@ racket benchmarks/shootout/chameneos.rkt \
   --n 10000 \
   --repeat 3 \
   --log logs/chameneos.sexp
+
+# FASTA (shootout) benchmark
+racket benchmarks/shootout/fasta.rkt \
+  --n 150000 \
+  --workers 4 \
+  --repeat 3 \
+  --log logs/fasta.sexp
+
+# Regex DNA (shootout) benchmark
+racket benchmarks/shootout/regex-dna.rkt \
+  --n 150000 \
+  --workers 4 \
+  --repeat 3 \
+  --log logs/regex-dna.sexp
+
+# K-Nucleotide (shootout) benchmark
+racket benchmarks/shootout/k-nucleotide.rkt \
+  --n 150000 \
+  --workers 4 \
+  --repeat 3 \
+  --log logs/k-nucleotide.sexp
 ```
 
 Key switches (all optional):
@@ -214,6 +240,40 @@ Predefined configuration files control problem sizes and repetitions:
 - `benchmarks/config/stress.sexp` - Large problem sizes (comprehensive evaluation)
 
 Configuration files use S-expression format with override specifications per benchmark.
+
+## Interactive Visualization
+
+The visualization tool runs benchmarks and generates an interactive HTML dashboard for analyzing results:
+
+```bash
+# Run all benchmarks and generate visualization
+racket benchmarks/tools/visualize.rkt --suite all --config benchmarks/config/quick.sexp
+
+# Run specific suite with custom output
+racket benchmarks/tools/visualize.rkt \
+  --suite shootout \
+  --config benchmarks/config/standard.sexp \
+  --output results.html \
+  --title "Shootout Benchmark Results"
+
+# Generate visualization from existing logs without re-running benchmarks
+racket benchmarks/tools/visualize.rkt --no-run --log-dir logs --output results.html
+```
+
+Key features:
+- **Interactive Charts**: Switch between bar, line, and radar charts
+- **Multiple Metrics**: View real time, CPU time, min/max values
+- **Linear/Log Scale**: Toggle between linear and logarithmic scales
+- **Summary Statistics**: Quick overview of total benchmarks, variants, and average times
+- **Detailed Table**: Complete data with all metrics and standard deviations
+
+Options:
+- `--suite`, `-s`: Suite to run (racket, shootout, nas, mpl, or all)
+- `--config`, `-c`: Configuration file (quick.sexp, standard.sexp, stress.sexp)
+- `--log-dir`, `-l`: Directory for log files (default: logs)
+- `--output`, `-o`: Output HTML file (default: benchmark-results.html)
+- `--title`, `-t`: Dashboard title
+- `--no-run`: Generate visualization from existing logs only
 
 ## Next Steps
 
