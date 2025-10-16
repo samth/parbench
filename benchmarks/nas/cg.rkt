@@ -243,58 +243,139 @@
     (flvector-set! z i (+ (flvector-ref x i)
                          (* alpha (flvector-ref y i))))))
 
+;; Compute chunk ranges for splitting vector work across workers.
+(define (make-chunk-ranges total worker-count)
+  (define actual (max 1 worker-count))
+  (define chunk-size (max 1 (quotient (+ total actual -1) actual)))
+  (for/list ([w (in-range actual)]
+             #:when (< (* w chunk-size) total))
+    (define start (* w chunk-size))
+    (define end (min total (+ start chunk-size)))
+    (cons start end)))
+
+;; Parallel sparse matrix-vector multiply using a shared thread pool.
+(define (sparse-matvec/parallel! mat x y pool chunk-ranges)
+  (define colidx (sparse-matrix-colidx mat))
+  (define rowstr (sparse-matrix-rowstr mat))
+  (define a (sparse-matrix-a mat))
+  (define tasks
+    (for/list ([range (in-list chunk-ranges)])
+      (let ([start (car range)]
+            [end (cdr range)])
+        (thread-pool-submit
+         pool
+         (λ ()
+           (for ([j (in-range start end)])
+             (define sum 0.0)
+             (define row-start (- (vector-ref rowstr (+ j 1)) 1))
+             (define row-end (- (vector-ref rowstr (+ j 2)) 1))
+             (for ([k (in-range row-start row-end)])
+               (set! sum (+ sum (* (flvector-ref a k)
+                                   (flvector-ref x (- (vector-ref colidx k) 1))))))
+             (flvector-set! y j sum)))))))
+  (for ([task (in-list tasks)])
+    (thread-pool-wait task)))
+
+;; Parallel dot product with chunked accumulation.
+(define (dot-product/parallel x y pool chunk-ranges)
+  (define tasks
+    (for/list ([range (in-list chunk-ranges)])
+      (let ([start (car range)]
+            [end (cdr range)])
+        (thread-pool-submit
+         pool
+         (λ ()
+           (define partial 0.0)
+           (for ([i (in-range start end)])
+             (set! partial (+ partial (* (flvector-ref x i)
+                                         (flvector-ref y i)))))
+           partial)))))
+  (for/fold ([acc 0.0])
+            ([task (in-list tasks)])
+    (+ acc (thread-pool-wait task))))
+
+;; Parallel in-place vector combination `z = x + alpha * y`.
+(define (vec-add!/parallel z x y alpha pool chunk-ranges)
+  (define tasks
+    (for/list ([range (in-list chunk-ranges)])
+      (let ([start (car range)]
+            [end (cdr range)])
+        (thread-pool-submit
+         pool
+         (λ ()
+           (for ([i (in-range start end)])
+             (flvector-set! z i (+ (flvector-ref x i)
+                                   (* alpha (flvector-ref y i))))))))))
+  (for ([task (in-list tasks)])
+    (thread-pool-wait task)))
+
 ;; Conjugate Gradient solver - returns z (solution) and rnorm
 (define (conj-grad mat x z workers)
   (define n (sparse-matrix-n mat))
-  (define r (make-flvector n 0.0))
-  (define p (make-flvector n 0.0))
-  (define q (make-flvector n 0.0))
+  (define (run CG-matvec! CG-dot CG-vec-add!)
+    (define r (make-flvector n 0.0))
+    (define p (make-flvector n 0.0))
+    (define q (make-flvector n 0.0))
 
-  ;; Initialize: q=0, z=0, r=x, p=r
-  (for ([j (in-range n)])
-    (flvector-set! q j 0.0)
-    (flvector-set! z j 0.0)
-    (flvector-set! r j (flvector-ref x j))
-    (flvector-set! p j (flvector-ref r j)))
-
-  ;; rho = r.r
-  (define rho (dot-product r r n))
-
-  ;; CG iterations
-  (for/fold ([current-rho rho]
-             [converged? #f])
-            ([cgit (in-range cgit-max)]
-             #:break converged?)
-    (define rho0 current-rho)
-
-    ;; q = A*p
-    (sparse-matvec-seq mat p q)
-
-    ;; d = p.q
-    (define d (dot-product p q n))
-
-    ;; alpha = rho / d
-    (define alpha (/ rho0 d))
-
-    ;; z = z + alpha*p
-    (vec-add! z z p alpha n)
-
-    ;; r = r - alpha*q
-    (vec-add! r r q (- alpha) n)
+    ;; Initialize: q=0, z=0, r=x, p=r
+    (for ([j (in-range n)])
+      (flvector-set! q j 0.0)
+      (flvector-set! z j 0.0)
+      (flvector-set! r j (flvector-ref x j))
+      (flvector-set! p j (flvector-ref r j)))
 
     ;; rho = r.r
-    (define rho-new (dot-product r r n))
+    (define rho (CG-dot r r))
 
-    ;; beta = rho_new / rho_old
-    (define beta (/ rho-new rho0))
+    ;; CG iterations
+    (for/fold ([current-rho rho]
+               [converged? #f])
+              ([cgit (in-range cgit-max)]
+               #:break converged?)
+      (define rho0 current-rho)
 
-    ;; p = r + beta*p
-    (vec-add! p r p beta n)
+      ;; q = A*p
+      (CG-matvec! p q)
 
-    (values rho-new (< rho-new 1e-10)))
+      ;; d = p.q
+      (define d (CG-dot p q))
 
-  ;; Return rnorm
-  (sqrt (dot-product r r n)))
+      ;; alpha = rho / d
+      (define alpha (/ rho0 d))
+
+      ;; z = z + alpha*p
+      (CG-vec-add! z z p alpha)
+
+      ;; r = r - alpha*q
+      (CG-vec-add! r r q (- alpha))
+
+      ;; rho = r.r
+      (define rho-new (CG-dot r r))
+
+      ;; beta = rho_new / rho_old
+      (define beta (/ rho-new rho0))
+
+      ;; p = r + beta*p
+      (CG-vec-add! p r p beta)
+
+      (values rho-new (< rho-new 1e-10)))
+
+    ;; Return rnorm
+    (sqrt (CG-dot r r)))
+  (cond
+    [(<= workers 1)
+     (run (λ (p q) (sparse-matvec-seq mat p q))
+          (λ (u v) (dot-product u v n))
+          (λ (dest a b alpha) (vec-add! dest a b alpha n)))]
+    [else
+     (call-with-thread-pool workers
+       (λ (pool actual-workers)
+         (define chunk-ranges (make-chunk-ranges n actual-workers))
+         (run (λ (p q) (sparse-matvec/parallel! mat p q pool chunk-ranges))
+              (λ (u v) (dot-product/parallel u v pool chunk-ranges))
+              (λ (dest a b alpha)
+                (vec-add!/parallel dest a b alpha pool chunk-ranges))))
+       #:max (if (zero? n) 1 n))]))
 
 ;; Main CG benchmark function
 (define (cg #:class [class default-nas-class]
