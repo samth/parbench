@@ -90,38 +90,28 @@
 (define (ep-sequential pairs)
   (ep-chunk 0 pairs))
 
-(define (spawn-task thunk)
-  (case (parallel-strategy)
-    [(futures)
-     (future thunk)]
-    [(threads)
-     (define ch (make-channel))
-     (thread (λ () (channel-put ch (thunk))))
-     ch]))
-
-(define (await-task task)
-  (case (parallel-strategy)
-    [(futures) (touch task)]
-    [(threads) (channel-get task)]))
-
 (define (ep-parallel pairs workers)
-  (define worker-count (max 1 workers))
-  (define chunk-size (max 1 (ceiling (/ pairs worker-count))))
-  (define tasks
-    (for/list ([w (in-range worker-count)])
-      (define start (* w chunk-size))
-      (define end (min pairs (+ start chunk-size)))
-      (if (>= start end)
-          #f
-          (spawn-task (λ () (ep-chunk start (- end start)))))))
-  (define valid-tasks (filter values tasks))
-  (cond
-    [(null? valid-tasks) (ep-sequential pairs)]
-    [else
-     (define first-result (await-task (car valid-tasks)))
-     (for/fold ([acc first-result])
-               ([task (in-list (cdr valid-tasks))])
-       (combine-stats acc (await-task task)))]))
+  (call-with-thread-pool workers
+    (λ (pool actual-workers)
+      (define chunk-size (max 1 (quotient (+ pairs actual-workers -1) actual-workers)))
+      (define tasks
+        (for/list ([w (in-range actual-workers)])
+          (define start (* w chunk-size))
+          (define end (min pairs (+ start chunk-size)))
+          (and (< start end)
+               (thread-pool-submit
+                pool
+                (λ () (ep-chunk start (- end start)))))))
+      (define results
+        (for/list ([task (in-list tasks)] #:when task)
+          (thread-pool-wait task)))
+      (cond
+        [(null? results) (ep-sequential pairs)]
+        [else
+         (for/fold ([acc (car results)])
+                   ([res (in-list (cdr results))])
+           (combine-stats acc res))]))
+    #:max (if (zero? pairs) 1 pairs)))
 
 (define (ensure-class sym)
   (define class (string->symbol (string-upcase (symbol->string sym))))
@@ -149,7 +139,6 @@
   (define workers (processor-count))
   (define repeat 1)
   (define log-path #f)
-  (define strategy 'threads)
   (define pair-override #f)
 
   (void
@@ -162,14 +151,10 @@
      (set! workers (parse-positive-integer arg 'nas-ep))]
     [("--repeat") arg "Benchmark repetitions"
      (set! repeat (parse-positive-integer arg 'nas-ep))]
-    [("--strategy") arg "Parallel strategy: threads or futures"
-     (set! strategy (string->symbol (string-downcase arg)))]
     [("--pairs") arg "Override pair count (testing)"
      (set! pair-override (string->number arg))]
     [("--log") arg "Optional S-expression log path"
      (set! log-path arg)]))
-
-  (set-parallel-strategy! strategy)
 
   (define actual-class (ensure-class class))
   (define actual-pairs (resolve-pairs actual-class pair-override))
@@ -178,8 +163,7 @@
   (define metadata (system-metadata))
   (define params (list (list 'class actual-class)
                        (list 'pairs actual-pairs)
-                       (list 'workers workers)
-                       (list 'strategy strategy)))
+                       (list 'workers workers)))
 
   (define sequential-result
     (run-benchmark
@@ -195,7 +179,7 @@
     (run-benchmark
      (λ () (ep #:class actual-class #:pairs actual-pairs #:workers workers))
      #:name 'nas-ep
-     #:variant (string->symbol (format "parallel-~a" strategy))
+     #:variant 'parallel
      #:repeat repeat
      #:log-writer writer
      #:params params

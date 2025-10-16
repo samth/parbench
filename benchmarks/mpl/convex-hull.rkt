@@ -82,8 +82,8 @@
           (list rightmost)
           (quickhull-sequential lower-set rightmost leftmost)))
 
-;; Parallel QuickHull algorithm
-(define (quickhull-parallel points a b workers threshold)
+;; Parallel QuickHull algorithm (uses shared thread pool)
+(define (quickhull-parallel points a b pool threshold)
   (if (or (null? points) (< (length points) threshold))
       (quickhull-sequential points a b)
       (let ([farthest (find-farthest-point points a b)])
@@ -91,9 +91,12 @@
             null
             (let* ([left-set (filter (λ (p) (> (cross-product a farthest p) 0)) points)]
                    [right-set (filter (λ (p) (> (cross-product farthest b p) 0)) points)]
-                   [left-future (future (λ () (quickhull-parallel left-set a farthest workers threshold)))]
-                   [right-hull (quickhull-parallel right-set farthest b workers threshold)]
-                   [left-hull (touch left-future)])
+                   [left-thread (and (not (null? left-set))
+                                     (thread-pool-submit
+                                      pool
+                                      (λ () (quickhull-parallel left-set a farthest pool threshold))))]
+                   [right-hull (quickhull-parallel right-set farthest b pool threshold)]
+                   [left-hull (if left-thread (thread-pool-wait left-thread) null)])
               (append left-hull (list farthest) right-hull))))))
 
 (define (convex-hull-parallel points workers threshold)
@@ -110,12 +113,18 @@
   (define lower-set
     (filter (λ (p) (< (cross-product leftmost rightmost p) 0)) points))
 
-  ;; Compute hull in parallel
-  (define upper-future (future (λ () (quickhull-parallel upper-set leftmost rightmost workers threshold))))
-  (define lower-hull (quickhull-parallel lower-set rightmost leftmost workers threshold))
-  (define upper-hull (touch upper-future))
-
-  (append (list leftmost) upper-hull (list rightmost) lower-hull))
+  ;; Compute hull in parallel using shared pool
+  (call-with-thread-pool workers
+    (λ (pool actual-workers)
+      (define upper-thread
+        (and (not (null? upper-set))
+             (thread-pool-submit
+              pool
+              (λ () (quickhull-parallel upper-set leftmost rightmost pool threshold)))))
+      (define lower-hull (quickhull-parallel lower-set rightmost leftmost pool threshold))
+      (define upper-hull (if upper-thread (thread-pool-wait upper-thread) null))
+      (append (list leftmost) upper-hull (list rightmost) lower-hull))
+    #:max (length points)))
 
 ;; Sign function helper
 (define (sgn x)
@@ -193,7 +202,6 @@
   (define repeat 3)
   (define log-path #f)
   (define seed 42)
-  (define strategy 'futures)
 
   (void
    (command-line
@@ -213,12 +221,8 @@
      (set! repeat (parse-positive-integer arg 'convex-hull))]
     [("--seed") arg "Random seed"
      (set! seed (parse-positive-integer arg 'convex-hull))]
-    [("--strategy") arg "Parallel strategy: threads or futures"
-     (set! strategy (string->symbol arg))]
     [("--log") arg "S-expression log path"
      (set! log-path arg)]))
-
-  (set-parallel-strategy! strategy)
 
   ;; Load or generate points
   (define points
@@ -238,8 +242,7 @@
   (define params (list (list 'n num-points)
                        (list 'workers workers)
                        (list 'threshold threshold)
-                       (list 'seed seed)
-                       (list 'strategy strategy)))
+                       (list 'seed seed)))
 
   (printf "Running sequential convex hull (QuickHull)...\n")
   (define seq-result

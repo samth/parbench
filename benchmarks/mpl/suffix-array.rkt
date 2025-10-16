@@ -76,63 +76,69 @@
   (define sa (for/vector ([i (in-range n)]) i))
 
   ;; Prefix doubling with parallel operations
-  (let loop ([k 1])
-    (when (< k n)
-      ;; Parallel comparison and sorting
-      ;; For simplicity, we use built-in sort (which may use parallelism)
-      ;; In a full implementation, we'd use parallel radix sort or sample sort
-      (define sa-list (vector->list sa))
-      (define sorted-sa
-        (sort sa-list
-              (λ (i j)
-                (define ri (vector-ref rank i))
-                (define rj (vector-ref rank j))
-                (if (= ri rj)
-                    (let ([rik (if (< (+ i k) n) (vector-ref rank (+ i k)) -1)]
-                          [rjk (if (< (+ j k) n) (vector-ref rank (+ j k)) -1)])
-                      (< rik rjk))
-                    (< ri rj)))))
-      (set! sa (list->vector sorted-sa))
+  (call-with-thread-pool workers
+    (λ (pool actual-workers)
+      (let loop ([k 1])
+        (when (< k n)
+          ;; Parallel comparison and sorting
+          ;; For simplicity, we use built-in sort (which may use parallelism)
+          ;; In a full implementation, we'd use parallel radix sort or sample sort
+          (define sa-list (vector->list sa))
+          (define sorted-sa
+            (sort sa-list
+                  (λ (i j)
+                    (define ri (vector-ref rank i))
+                    (define rj (vector-ref rank j))
+                    (if (= ri rj)
+                        (let ([rik (if (< (+ i k) n) (vector-ref rank (+ i k)) -1)]
+                              [rjk (if (< (+ j k) n) (vector-ref rank (+ j k)) -1)])
+                          (< rik rjk))
+                        (< ri rj)))))
+          (set! sa (list->vector sorted-sa))
 
-      ;; Parallel rank update
-      (define chunk-size (quotient (+ n workers -1) workers))
-      (define new-rank-futures
-        (for/list ([w (in-range workers)])
-          (define start (* w chunk-size))
-          (define end (min (+ start chunk-size) n))
-          (future
-           (λ ()
-             (define local-rank (make-vector n -1))
-             (for ([idx (in-range (max 1 start) end)])
-               (define i (vector-ref sa idx))
-               (define prev-i (vector-ref sa (sub1 idx)))
-               (define same-pair?
-                 (and (= (vector-ref rank i) (vector-ref rank prev-i))
-                      (= (if (< (+ i k) n) (vector-ref rank (+ i k)) -1)
-                         (if (< (+ prev-i k) n) (vector-ref rank (+ prev-i k)) -1))))
-               ;; This is a simplified version; full parallel implementation
-               ;; would need careful handling of rank computation
-               (vector-set! local-rank i
-                            (if same-pair? -2 idx)))  ; -2 means "needs propagation"
-             local-rank))))
+          ;; Parallel rank update placeholder (collect results for potential future improvements)
+          (define chunk-size (quotient (+ n actual-workers -1) actual-workers))
+          (define rank-threads
+            (for/list ([w (in-range actual-workers)])
+              (define start (* w chunk-size))
+              (define end (min (+ start chunk-size) n))
+              (and (< start end)
+                   (thread-pool-submit
+                    pool
+                    (λ ()
+                      (define local-rank (make-vector n -1))
+                      (for ([idx (in-range (max 1 start) end)])
+                        (define i (vector-ref sa idx))
+                        (define prev-i (vector-ref sa (sub1 idx)))
+                        (define same-pair?
+                          (and (= (vector-ref rank i) (vector-ref rank prev-i))
+                               (= (if (< (+ i k) n) (vector-ref rank (+ i k)) -1)
+                                  (if (< (+ prev-i k) n) (vector-ref rank (+ prev-i k)) -1))))
+                        ;; Placeholder for potential propagation; kept for structural parity
+                        (vector-set! local-rank i
+                                     (if same-pair? -2 idx)))
+                      local-rank)))))
+          (for ([t (in-list rank-threads)])
+            (when t (thread-pool-wait t)))
 
-      ;; Collect and merge ranks (sequential merge for correctness)
-      (define new-rank (make-vector n 0))
-      (vector-set! new-rank (vector-ref sa 0) 0)
-      (for ([idx (in-range 1 n)])
-        (define i (vector-ref sa idx))
-        (define prev-i (vector-ref sa (sub1 idx)))
-        (define same-pair?
-          (and (= (vector-ref rank i) (vector-ref rank prev-i))
-               (= (if (< (+ i k) n) (vector-ref rank (+ i k)) -1)
-                  (if (< (+ prev-i k) n) (vector-ref rank (+ prev-i k)) -1))))
-        (vector-set! new-rank i
-                     (if same-pair?
-                         (vector-ref new-rank prev-i)
-                         idx)))
+          ;; Collect and merge ranks (sequential merge for correctness)
+          (define new-rank (make-vector n 0))
+          (vector-set! new-rank (vector-ref sa 0) 0)
+          (for ([idx (in-range 1 n)])
+            (define i (vector-ref sa idx))
+            (define prev-i (vector-ref sa (sub1 idx)))
+            (define same-pair?
+              (and (= (vector-ref rank i) (vector-ref rank prev-i))
+                   (= (if (< (+ i k) n) (vector-ref rank (+ i k)) -1)
+                      (if (< (+ prev-i k) n) (vector-ref rank (+ prev-i k)) -1))))
+            (vector-set! new-rank i
+                         (if same-pair?
+                             (vector-ref new-rank prev-i)
+                             idx)))
 
-      (set! rank new-rank)
-      (loop (* k 2))))
+          (set! rank new-rank)
+          (loop (* k 2)))))
+    #:max (if (zero? n) 1 n))
 
   sa)
 
@@ -182,7 +188,6 @@
   (define repeat 3)
   (define log-path #f)
   (define seed 42)
-  (define strategy 'futures)
 
   (void
    (command-line
@@ -200,12 +205,8 @@
      (set! repeat (parse-positive-integer arg 'suffix-array))]
     [("--seed") arg "Random seed"
      (set! seed (parse-positive-integer arg 'suffix-array))]
-    [("--strategy") arg "Parallel strategy: threads or futures"
-     (set! strategy (string->symbol arg))]
     [("--log") arg "S-expression log path"
      (set! log-path arg)]))
-
-  (set-parallel-strategy! strategy)
 
   ;; Load or generate text
   (define text
@@ -224,8 +225,7 @@
   (define metadata (system-metadata))
   (define params (list (list 'n text-length)
                        (list 'workers workers)
-                       (list 'seed seed)
-                       (list 'strategy strategy)))
+                       (list 'seed seed)))
 
   (printf "Running sequential suffix array (prefix doubling)...\n")
   (define seq-result

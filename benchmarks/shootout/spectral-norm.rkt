@@ -58,7 +58,6 @@
   (define iterations 10)
   (define repeat 1)
   (define log-path #f)
-  (define strategy 'threads)
 
   (void
    (command-line
@@ -72,19 +71,14 @@
      (set! workers (parse-positive-integer arg 'spectral-norm))]
     [("--repeat") arg "Benchmark repetitions"
      (set! repeat (parse-positive-integer arg 'spectral-norm))]
-    [("--strategy") arg "Parallel strategy: threads or futures"
-     (set! strategy (string->symbol arg))]
     [("--log") arg "Optional S-expression log path"
      (set! log-path arg)]))
-
-  (set-parallel-strategy! strategy)
 
   (define writer (make-log-writer log-path))
   (define metadata (system-metadata))
   (define params (list (list 'n n)
                        (list 'iterations iterations)
-                       (list 'workers workers)
-                       (list 'strategy strategy)))
+                       (list 'workers workers)))
 
   (define sequential-value
     (run-benchmark
@@ -99,7 +93,7 @@
   (run-benchmark
    (λ () (spectral-norm n #:workers workers #:iterations iterations))
    #:name 'spectral-norm
-   #:variant (string->symbol (format "parallel-~a" strategy))
+   #:variant 'parallel
    #:repeat repeat
    #:log-writer writer
    #:params params

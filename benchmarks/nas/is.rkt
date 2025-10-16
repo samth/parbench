@@ -129,79 +129,83 @@
 ;; Parallel bucket sort
 (define (is-parallel-sort keys max-key num-buckets workers)
   (define n (vector-length keys))
-  (define chunk-size (quotient (+ n workers -1) workers))
   (define bucket-size (quotient (+ max-key num-buckets -1) num-buckets))
 
-  ;; Step 1: Parallel local bucket counting
-  (define local-counts-list
-    (for/list ([w (in-range workers)])
-      (define start (* w chunk-size))
-      (define end (min (+ start chunk-size) n))
-      (future
-       (λ ()
-         (define local-counts (make-vector num-buckets 0))
-         (for ([i (in-range start end)])
-           (define key (vector-ref keys i))
-           (define bucket-id (quotient key bucket-size))
-           (when (>= bucket-id num-buckets)
-             (set! bucket-id (sub1 num-buckets)))
-           (vector-set! local-counts bucket-id
-                        (fx+ 1 (vector-ref local-counts bucket-id))))
-         local-counts))))
+  (call-with-thread-pool workers
+    (λ (pool actual-workers)
+      (define chunk-size (quotient (+ n actual-workers -1) actual-workers))
 
-  ;; Step 2: Merge local counts to get global bucket counts
-  (define bucket-counts (make-vector num-buckets 0))
-  (for ([fut (in-list local-counts-list)])
-    (define local-counts (touch fut))
-    (for ([bucket (in-range num-buckets)])
-      (vector-set! bucket-counts bucket
-                   (fx+ (vector-ref bucket-counts bucket)
-                        (vector-ref local-counts bucket)))))
+      ;; Step 1: Parallel local bucket counting
+      (define local-counts-list
+        (thread-pool-wait/collect
+         (for/list ([w (in-range actual-workers)])
+           (define start (* w chunk-size))
+           (define end (min (+ start chunk-size) n))
+           (thread-pool-submit
+            pool
+            (λ ()
+              (define local-counts (make-vector num-buckets 0))
+              (for ([i (in-range start end)])
+                (define key (vector-ref keys i))
+                (define bucket-id (quotient key bucket-size))
+                (when (>= bucket-id num-buckets)
+                  (set! bucket-id (sub1 num-buckets)))
+                (vector-set! local-counts bucket-id
+                             (fx+ 1 (vector-ref local-counts bucket-id))))
+              local-counts)))))
 
-  ;; Step 3: Compute prefix sums
-  (define bucket-ptrs (make-vector num-buckets 0))
-  (for ([i (in-range 1 num-buckets)])
-    (vector-set! bucket-ptrs i
-                 (fx+ (vector-ref bucket-ptrs (fx- i 1))
-                      (vector-ref bucket-counts (fx- i 1)))))
+      ;; Step 2: Merge local counts to get global bucket counts
+      (define bucket-counts (make-vector num-buckets 0))
+      (for ([local-counts (in-list local-counts-list)])
+        (for ([bucket (in-range num-buckets)])
+          (vector-set! bucket-counts bucket
+                       (fx+ (vector-ref bucket-counts bucket)
+                            (vector-ref local-counts bucket)))))
 
-  ;; Step 4: Distribute keys (sequential for correctness)
-  (define sorted-keys (make-vector n 0))
-  (define write-ptrs (vector-copy bucket-ptrs))
+      ;; Step 3: Compute prefix sums
+      (define bucket-ptrs (make-vector num-buckets 0))
+      (for ([i (in-range 1 num-buckets)])
+        (vector-set! bucket-ptrs i
+                     (fx+ (vector-ref bucket-ptrs (fx- i 1))
+                          (vector-ref bucket-counts (fx- i 1)))))
 
-  (for ([key (in-vector keys)])
-    (define bucket-id (quotient key bucket-size))
-    (when (>= bucket-id num-buckets)
-      (set! bucket-id (sub1 num-buckets)))
-    (define pos (vector-ref write-ptrs bucket-id))
-    (vector-set! sorted-keys pos key)
-    (vector-set! write-ptrs bucket-id (fx+ pos 1)))
+      ;; Step 4: Distribute keys (sequential for correctness)
+      (define sorted-keys (make-vector n 0))
+      (define write-ptrs (vector-copy bucket-ptrs))
 
-  ;; Step 5: Parallel sort within buckets
-  (define sort-tasks
-    (for/list ([bucket (in-range num-buckets)])
-      (define start (vector-ref bucket-ptrs bucket))
-      (define end (if (< bucket (sub1 num-buckets))
-                      (vector-ref bucket-ptrs (add1 bucket))
-                      n))
-      (if (< start end)
-          (future
-           (λ ()
-             (define subvec (vector-copy sorted-keys start end))
-             (vector-sort! subvec <)
-             (cons start subvec)))
-          #f)))
+      (for ([key (in-vector keys)])
+        (define bucket-id (quotient key bucket-size))
+        (when (>= bucket-id num-buckets)
+          (set! bucket-id (sub1 num-buckets)))
+        (define pos (vector-ref write-ptrs bucket-id))
+        (vector-set! sorted-keys pos key)
+        (vector-set! write-ptrs bucket-id (fx+ pos 1)))
 
-  ;; Copy sorted sub-buckets back
-  (for ([task (in-list sort-tasks)])
-    (when task
-      (define result (touch task))
-      (when result
-        (define start (car result))
-        (define subvec (cdr result))
-        (vector-copy! sorted-keys start subvec))))
+      ;; Step 5: Parallel sort within buckets
+      (define sort-threads
+        (for/list ([bucket (in-range num-buckets)])
+          (define start (vector-ref bucket-ptrs bucket))
+          (define end (if (< bucket (sub1 num-buckets))
+                          (vector-ref bucket-ptrs (add1 bucket))
+                          n))
+          (and (< start end)
+               (thread-pool-submit
+                pool
+                (λ ()
+                  (define subvec (vector-copy sorted-keys start end))
+                  (vector-sort! subvec <)
+                  (cons start subvec))))))
 
-  sorted-keys)
+      ;; Copy sorted sub-buckets back
+      (for ([task (in-list sort-threads)])
+        (when task
+          (define result (thread-pool-wait task))
+          (define start (car result))
+          (define subvec (cdr result))
+          (vector-copy! sorted-keys start subvec)))
+
+      sorted-keys)
+    #:max (if (zero? n) 1 n)))
 
 ;; Verify that the result is sorted
 (define (verify-sorted keys)
@@ -247,7 +251,6 @@
   (define workers (processor-count))
   (define repeat 1)
   (define log-path #f)
-  (define strategy 'threads)
   (define total-keys-override #f)
 
   (void
@@ -260,14 +263,10 @@
      (set! workers (parse-positive-integer arg 'nas-is))]
     [("--repeat") arg "Benchmark repetitions"
      (set! repeat (parse-positive-integer arg 'nas-is))]
-    [("--strategy") arg "Parallel strategy: threads or futures"
-     (set! strategy (string->symbol (string-downcase arg)))]
     [("--total-keys") arg "Override total keys (testing)"
      (set! total-keys-override (string->number arg))]
     [("--log") arg "Optional S-expression log path"
      (set! log-path arg)]))
-
-  (set-parallel-strategy! strategy)
 
   (define actual-class (ensure-class class))
   (define params (hash-ref is-class->params actual-class))
@@ -281,8 +280,7 @@
                              (list 'total-keys total-keys)
                              (list 'max-key max-key)
                              (list 'num-buckets num-buckets)
-                             (list 'workers workers)
-                             (list 'strategy strategy)))
+                             (list 'workers workers)))
 
   (printf "Running NAS IS benchmark: class=~a, total-keys=~a, max-key=~a\n"
           actual-class total-keys max-key)
@@ -301,7 +299,7 @@
     (run-benchmark
      (λ () (is #:class actual-class #:total-keys total-keys #:workers workers))
      #:name 'nas-is
-     #:variant (string->symbol (format "parallel-~a" strategy))
+     #:variant 'parallel
      #:repeat repeat
      #:log-writer writer
      #:params bench-params

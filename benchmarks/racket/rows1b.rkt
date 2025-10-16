@@ -1,11 +1,12 @@
 #lang racket
 
-(require racket/future
+(require racket/place
          racket/string
          racket/math
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt")
+         "../common/logging.rkt"
+         "../common/parallel.rkt")
 
 (provide rows1b-sequential
          rows1b-parallel
@@ -120,14 +121,18 @@
   (define chunk (or chunk-size
                     (max 1 (ceiling (/ rows (* worker-count 2))))))
   (define ranges (chunk-ranges rows chunk))
-  (define futures
-    (for/list ([rg (in-list ranges)])
-      (define start (car rg))
-      (define end (cdr rg))
-      (future (λ () (process-range start end)))))
   (define table (make-hash))
-  (for ([f futures])
-    (merge-tables! table (touch f)))
+  (define results
+    (call-with-thread-pool workers
+      (λ (pool actual-workers)
+        (thread-pool-wait/collect
+         (for/list ([rg (in-list ranges)])
+           (define start (car rg))
+           (define end (cdr rg))
+           (thread-pool-submit pool (λ () (process-range start end))))))
+      #:max (length ranges)))
+  (for ([result-values (in-list results)])
+    (merge-tables! table (first result-values)))
   (finalize-table table))
 
 (define (rows1b-results=? a b)
@@ -157,7 +162,7 @@
      (set! rows (parse-positive-integer arg 'rows1b))]
     [("--workers") arg "Worker count for parallel variant."
      (set! workers (parse-positive-integer arg 'rows1b))]
-    [("--chunk-size") arg "Chunk size (rows) processed per future."
+    [("--chunk-size") arg "Chunk size (rows) processed per worker."
      (set! chunk-size (parse-positive-integer arg 'rows1b))]
     [("--repeat") arg "Number of benchmark repetitions."
      (set! repeat (parse-positive-integer arg 'rows1b))]

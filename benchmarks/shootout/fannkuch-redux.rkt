@@ -1,6 +1,8 @@
 #lang racket
 
-(require racket/unsafe/ops
+(require racket/list
+         racket/unsafe/ops
+         "../common/parallel.rkt"
          "../common/cli.rkt"
          "../common/run.rkt"
          "../common/logging.rkt")
@@ -28,41 +30,93 @@
     (unsafe-vector-set! v i (unsafe-vector-ref v j))
     (unsafe-vector-set! v j t)))
 
-(define (fannkuch-sequential n)
-  (define pi (list->vector (for/list ([i (in-range n)]) i)))
-  (define tmp (make-vector n))
-  (define count (make-vector n))
-  (let loop ([flips 0]
-             [perms 0]
-             [r n]
-             [checksum 0]
-             [even-parity? #t])
-    (for ([i (in-range r)])
-      (unsafe-vector-set! count i (unsafe-fx+ 1 i)))
-    (define next-flips (count-flips pi tmp))
-    (define flips2 (max next-flips flips))
-    (define next-checksum (unsafe-fx+ checksum (if even-parity? next-flips (unsafe-fx- 0 next-flips))))
-    (let loop2 ([r 1])
-      (if (unsafe-fx= r n)
-          (values flips2 next-checksum)
-          (let ((perm0 (unsafe-vector-ref pi 0)))
-            (for ([i (in-range r)])
-              (unsafe-vector-set! pi i (unsafe-vector-ref pi (unsafe-fx+ 1 i))))
-            (unsafe-vector-set! pi r perm0)
-            (unsafe-vector-set! count r (unsafe-fx- (unsafe-vector-ref count r) 1))
-            (cond
-              [(<= (unsafe-vector-ref count r) 0)
-               (loop2 (unsafe-fx+ 1 r))]
-              [else (loop flips2
-                          (unsafe-fx+ 1 perms)
-                          r
-                          next-checksum
-                          (not even-parity?))]))))))
+(define (factorial n)
+  (for/fold ([acc 1]) ([i (in-range 2 (add1 n))])
+    (* acc i)))
 
-;; For simplicity, the parallel version just uses sequential with workers=1
-;; A correct parallel implementation would require complex permutation state management
+(define (reverse-suffix! v start end)
+  (let loop ([i start] [j end])
+    (when (unsafe-fx< i j)
+      (vector-swap! v i j)
+      (loop (unsafe-fx+ i 1) (unsafe-fx- j 1)))))
+
+(define (permutation-from-index n idx)
+  (define digits (make-vector n 0))
+  (define temp idx)
+  (for ([i (in-range 1 (add1 n))])
+    (vector-set! digits (- n i) (modulo temp i))
+    (set! temp (quotient temp i)))
+  (define available (for/list ([i (in-range n)]) i))
+  (define perm (make-vector n 0))
+  (for ([i (in-range n)])
+    (define d (vector-ref digits i))
+    (define val (list-ref available d))
+    (vector-set! perm i val)
+    (set! available (append (take available d) (drop available (add1 d)))))
+  perm)
+
+(define (next-permutation! perm)
+  (define n (vector-length perm))
+  (let loop ([i (unsafe-fx- n 2)])
+    (cond
+      [(unsafe-fx< i 0) #f]
+      [(unsafe-fx< (unsafe-vector-ref perm i)
+                   (unsafe-vector-ref perm (unsafe-fx+ i 1)))
+       (let search ([j (unsafe-fx- n 1)])
+         (if (unsafe-fx> (unsafe-vector-ref perm j)
+                         (unsafe-vector-ref perm i))
+             (begin
+               (vector-swap! perm i j)
+               (reverse-suffix! perm (unsafe-fx+ i 1) (unsafe-fx- n 1))
+               #t)
+             (search (unsafe-fx- j 1))))]
+      [else (loop (unsafe-fx- i 1))])))
+
+(define (fannkuch-range n start count)
+  (define total (factorial n))
+  (define end (min total (unsafe-fx+ start count)))
+  (define perm (permutation-from-index n start))
+  (define tmp (make-vector n))
+  (define max-flips 0)
+  (define checksum 0)
+  (let loop ([idx start])
+    (when (unsafe-fx< idx end)
+      (define flips (count-flips perm tmp))
+      (when (> flips max-flips) (set! max-flips flips))
+      (define sign (if (even? idx) 1 -1))
+      (set! checksum (+ checksum (* sign flips)))
+      (define next-idx (unsafe-fx+ idx 1))
+      (when (and (unsafe-fx< next-idx end)
+                 (next-permutation! perm))
+        (loop next-idx))))
+  (values max-flips checksum))
+
+(define (fannkuch-sequential n)
+  (fannkuch-range n 0 (factorial n)))
+
 (define (fannkuch-parallel n workers)
-  (fannkuch-sequential n))
+  (define total (factorial n))
+  (define worker-count (max 1 (min workers total)))
+  (define chunk-size (max 1 (quotient (+ total worker-count -1) worker-count)))
+  (call-with-thread-pool workers
+    (λ (pool actual-workers)
+      (define tasks
+        (thread-pool-wait/collect
+         (for/list ([start (in-range 0 total chunk-size)])
+           (define remaining (- total start))
+           (define count (min remaining chunk-size))
+           (thread-pool-submit
+            pool
+            (λ () (fannkuch-range n start count))))))
+      (define max-flips 0)
+      (define checksum 0)
+      (for ([vals (in-list tasks)])
+        (define flips (first vals))
+        (define partial-sum (second vals))
+        (set! max-flips (max max-flips flips))
+        (set! checksum (+ checksum partial-sum)))
+      (values max-flips checksum))
+    #:max worker-count))
 
 (define (fannkuch-redux n #:workers [workers 1])
   (if (= workers 1)

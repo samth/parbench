@@ -5,51 +5,70 @@
          (for-syntax racket/base))
 
 (provide for/parallel
-         parallel-strategy
-         set-parallel-strategy!)
+         call-with-thread-pool
+         thread-pool-submit
+         thread-pool-wait
+         thread-pool-wait/collect
+         thread-pool-for-each)
 
-;; Current parallel strategy: 'futures or 'threads
-(define parallel-strategy (make-parameter 'threads))
+;; Submit a thunk to a thread pool, keeping the result for retrieval.
+(define (thread-pool-submit pool thunk)
+  (thread #:pool pool #:keep 'results thunk))
 
-;; Set the parallelism strategy globally
-(define (set-parallel-strategy! strategy)
-  (unless (memq strategy '(futures threads))
-    (error 'set-parallel-strategy! "unknown strategy: ~a" strategy))
-  (parallel-strategy strategy))
+;; Wait for a thread spawned via thread-pool-submit and return all produced values.
+(define (thread-pool-wait t)
+  (thread-wait t))
 
-;; Parallel for loop that dispatches based on strategy
+;; Wait for a sequence of threads and collect their results into a list.
+(define (thread-pool-wait/collect threads)
+  (for/list ([t (in-list threads)])
+    (call-with-values
+     (λ () (thread-pool-wait t))
+     list)))
+
+;; Apply a thunk-generating procedure across indices using a shared pool.
+(define (thread-pool-for-each pool count proc)
+  (define threads
+    (for/list ([i (in-range count)])
+      (thread-pool-submit pool (λ () (proc i)))))
+  (for ([t (in-list threads)])
+    (thread-pool-wait t)))
+
+;; Parallel for loop implemented purely with thread pools.
 (define-syntax for/parallel
   (syntax-rules ()
     [(_ workers ([i N]) body ...)
-     (case (parallel-strategy)
-       [(futures)
-        (for/parallel-futures workers ([i N]) body ...)]
-       [(threads)
-        (for/parallel-threads workers ([i N]) body ...)])]))
-
-;; Futures-based parallel for
-(define-syntax for/parallel-futures
-  (syntax-rules ()
-    [(_ workers ([i N]) body ...)
-     (let ([stride (fxquotient N workers)])
-       (define fs
-         (for/list ([n workers])
-           (future (λ () (for ([i (in-range (fx* n stride)
-                                             (fxmin N (fx* (fx+ n 1) stride)))])
-                           body ...)))))
-       (for-each touch fs))]))
-
-;; Parallel threads-based parallel for
-(define-syntax for/parallel-threads
-  (syntax-rules ()
-    [(_ workers ([i N]) body ...)
-     (let ([pool (make-parallel-thread-pool workers)]
-           [stride (fxquotient N workers)])
-       (define threads
-         (for/list ([n workers])
-           (thread
-            #:pool pool
-            (λ () (for ([i (in-range (fx* n stride)
-                                      (fxmin N (fx* (fx+ n 1) stride)))])
+     (let* ([total N]
+            [worker-count (max 1 (min workers (if (exact-nonnegative-integer? total)
+                                                 total
+                                                 workers)))]
+            [pool (make-parallel-thread-pool worker-count)]
+            [stride (if (zero? worker-count)
+                        total
+                        (fxquotient total worker-count))])
+       (dynamic-wind
+         (λ () (void))
+         (λ ()
+           (define threads
+             (for/list ([n (in-range worker-count)])
+               (define start (fx* n stride))
+               (define end (fxmin total (fx* (fx+ n 1) stride)))
+               (thread-pool-submit
+                pool
+                (λ ()
+                  (for ([i (in-range start end)])
                     body ...)))))
-       (for ([t threads]) (thread-wait t)))]))
+           (for ([t (in-list threads)]) (thread-pool-wait t)))
+         (λ () (parallel-thread-pool-close pool))))]))
+;; Create a temporary thread pool, ensure it is closed, and run proc with it.
+(define (call-with-thread-pool workers proc #:max [max-tasks #f])
+  (define target (max 1 workers))
+  (define count (cond
+                  [(and max-tasks max-tasks)
+                   (max 1 (min target max-tasks))]
+                  [else target]))
+  (define pool (make-parallel-thread-pool count))
+  (dynamic-wind
+    (λ () (void))
+    (λ () (proc pool count))
+    (λ () (parallel-thread-pool-close pool))))

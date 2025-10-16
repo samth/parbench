@@ -53,58 +53,59 @@
   (define parent (make-vector n -1))
   (vector-set! parent source source)
 
-  (let loop ([current-frontier (list source)])
-    (unless (null? current-frontier)
-      (define frontier-size (length current-frontier))
-      (when (> frontier-size 0)
-        ;; Process frontier in parallel
-        (define next-frontier
-          (if (<= frontier-size workers)
-              ;; Small frontier: process sequentially
-              (for/fold ([next '()])
-                        ([u (in-list current-frontier)])
-                (append next
-                        (for/list ([v (in-list (vector-ref adj u))])
-                          ;; Use box-cas! for atomic compare-and-swap
-                          (define old (vector-ref parent v))
-                          (and (= old -1)
-                               (let ([new-parent u])
-                                 ;; Try to atomically set parent
-                                 ;; Note: Racket vectors don't have built-in CAS, so we use a simpler approach
-                                 ;; Check and set (race condition possible but benign for BFS)
-                                 (when (= -1 (vector-ref parent v))
-                                   (vector-set! parent v new-parent)
-                                   v))))))
-              ;; Large frontier: process in parallel chunks
-              (let* ([chunk-size (quotient (+ frontier-size workers -1) workers)]
-                     [chunks (for/list ([w (in-range workers)])
-                              (define start (* w chunk-size))
-                              (define end (min (+ start chunk-size) frontier-size))
-                              (if (>= start frontier-size)
-                                  '()
-                                  (take (drop current-frontier start) (- end start))))])
-                (apply append
-                       (for/list ([chunk (in-list chunks)]
-                                  #:when (not (null? chunk)))
-                         (touch
-                          (future
-                           (λ ()
-                             (for/fold ([next '()])
-                                       ([u (in-list chunk)])
-                               (append next
-                                       (for/list ([v (in-list (vector-ref adj u))])
-                                         ;; Check and set parent (race may occur but is benign)
-                                         (and (= -1 (vector-ref parent v))
-                                              (begin
-                                                (vector-set! parent v u)
-                                                v)))))))))))))
+  (call-with-thread-pool workers
+    (λ (pool actual-workers)
+      (let loop ([current-frontier (list source)])
+        (unless (null? current-frontier)
+          (define frontier-size (length current-frontier))
+          (when (> frontier-size 0)
+            ;; Process frontier in parallel
+            (define next-frontier
+              (if (<= frontier-size actual-workers)
+                  ;; Small frontier: process sequentially
+                  (for/fold ([next '()])
+                            ([u (in-list current-frontier)])
+                    (append next
+                            (for/list ([v (in-list (vector-ref adj u))])
+                              ;; Check and set parent (race condition is benign)
+                              (define old (vector-ref parent v))
+                              (and (= old -1)
+                                   (let ([new-parent u])
+                                     (when (= -1 (vector-ref parent v))
+                                       (vector-set! parent v new-parent)
+                                       v))))))
+                  ;; Large frontier: process in parallel chunks
+                  (let* ([chunk-size (quotient (+ frontier-size actual-workers -1) actual-workers)]
+                         [chunks (for/list ([w (in-range actual-workers)])
+                                   (define start (* w chunk-size))
+                                   (define end (min (+ start chunk-size) frontier-size))
+                                   (if (>= start frontier-size)
+                                       '()
+                                       (take (drop current-frontier start) (- end start))))]
+                         [threads
+                          (for/list ([chunk (in-list chunks)] #:when (not (null? chunk)))
+                            (thread-pool-submit
+                             pool
+                             (λ ()
+                               (for/fold ([next '()])
+                                         ([u (in-list chunk)])
+                                 (append next
+                                         (for/list ([v (in-list (vector-ref adj u))])
+                                           (and (= -1 (vector-ref parent v))
+                                                (begin
+                                                  (vector-set! parent v u)
+                                                  v))))))))])
+                    (apply append
+                           (for/list ([t (in-list threads)])
+                             (thread-pool-wait t))))))
 
-        ;; Remove #f values and duplicates from next-frontier
-        (define clean-frontier
-          (remove-duplicates
-           (filter (λ (x) x) next-frontier)))
+            ;; Remove #f values and duplicates from next-frontier
+            (define clean-frontier
+              (remove-duplicates
+               (filter (λ (x) x) next-frontier)))
 
-        (loop clean-frontier))))
+            (loop clean-frontier)))))
+    #:max n)
 
   parent)
 
@@ -150,7 +151,6 @@
   (define repeat 3)
   (define log-path #f)
   (define seed 42)
-  (define strategy 'threads)
   (define graph-type 'random)  ; 'random or 'grid
 
   (void
@@ -171,12 +171,8 @@
      (set! seed (parse-positive-integer arg 'bfs))]
     [("--graph-type") arg "Graph type: random or grid"
      (set! graph-type (string->symbol arg))]
-    [("--strategy") arg "Parallel strategy: threads or futures"
-     (set! strategy (string->symbol arg))]
     [("--log") arg "S-expression log path"
      (set! log-path arg)]))
-
-  (set-parallel-strategy! strategy)
 
   (printf "Generating ~a graph (n=~a)...\n" graph-type n)
   (define g
@@ -192,8 +188,7 @@
                        (list 'source source)
                        (list 'workers workers)
                        (list 'seed seed)
-                       (list 'graph-type graph-type)
-                       (list 'strategy strategy)))
+                       (list 'graph-type graph-type)))
 
   (printf "Running sequential BFS from vertex ~a...\n" source)
   (define seq-result

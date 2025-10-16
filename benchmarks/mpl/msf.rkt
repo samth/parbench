@@ -121,49 +121,52 @@
   (define msf-edges null)
 
   ;; Borůvka's algorithm: iteratively connect components
-  (let loop ()
-    ;; Find the lightest edge from each component in parallel
-    (define chunk-size (quotient (+ n workers -1) workers))
-    (define lightest-futures
-      (for/list ([w (in-range workers)])
-        (define start (* w chunk-size))
-        (define end (min (+ start chunk-size) n))
-        (future
-         (λ ()
-           ;; For each vertex in chunk, find lightest edge to different component
-           (define lightest (make-hash))
-           (for ([u (in-range start end)])
-             (define u-root (uf-find! uf u))
-             (for ([neighbor-weight (in-vector (vector-ref graph u))])
-               (define v (car neighbor-weight))
-               (define w (cdr neighbor-weight))
-               (define v-root (uf-find! uf v))
-               (when (not (= u-root v-root))
-                 (define current (hash-ref lightest u-root #f))
-                 (when (or (not current) (< w (third current)))
-                   (hash-set! lightest u-root (list u v w))))))
-           lightest))))
+  (call-with-thread-pool workers
+    (λ (pool actual-workers)
+      (let loop ()
+        ;; Find the lightest edge from each component in parallel
+        (define chunk-size (quotient (+ n actual-workers -1) actual-workers))
+        (define lightest-results
+          (thread-pool-wait/collect
+           (for/list ([w (in-range actual-workers)])
+             (define start (* w chunk-size))
+             (define end (min (+ start chunk-size) n))
+             (thread-pool-submit
+              pool
+              (λ ()
+                (define lightest (make-hash))
+                (for ([u (in-range start end)])
+                  (define u-root (uf-find! uf u))
+                  (for ([neighbor-weight (in-vector (vector-ref graph u))])
+                    (define v (car neighbor-weight))
+                    (define w (cdr neighbor-weight))
+                    (define v-root (uf-find! uf v))
+                    (when (not (= u-root v-root))
+                      (define current (hash-ref lightest u-root #f))
+                      (when (or (not current) (< w (third current)))
+                        (hash-set! lightest u-root (list u v w))))))
+                lightest)))))
 
-    ;; Collect lightest edges from all workers
-    (define all-lightest (make-hash))
-    (for ([fut (in-list lightest-futures)])
-      (define partial (touch fut))
-      (for ([(root edge) (in-hash partial)])
-        (define current (hash-ref all-lightest root #f))
-        (when (or (not current) (< (third edge) (third current)))
-          (hash-set! all-lightest root edge))))
+        ;; Collect lightest edges from all workers
+        (define all-lightest (make-hash))
+        (for ([partial (in-list lightest-results)])
+          (for ([(root edge) (in-hash partial)])
+            (define current (hash-ref all-lightest root #f))
+            (when (or (not current) (< (third edge) (third current)))
+              (hash-set! all-lightest root edge))))
 
-    ;; If no edges found, we're done
-    (when (> (hash-count all-lightest) 0)
-      ;; Add edges to MSF and union components
-      (for ([edge (in-hash-values all-lightest)])
-        (define u (first edge))
-        (define v (second edge))
-        (define w (third edge))
-        (unless (= (uf-find! uf u) (uf-find! uf v))
-          (uf-union! uf u v)
-          (set! msf-edges (cons edge msf-edges))))
-      (loop)))
+        ;; If no edges found, we're done
+        (when (> (hash-count all-lightest) 0)
+          ;; Add edges to MSF and union components
+          (for ([edge (in-hash-values all-lightest)])
+            (define u (first edge))
+            (define v (second edge))
+            (define w (third edge))
+            (unless (= (uf-find! uf u) (uf-find! uf v))
+              (uf-union! uf u v)
+              (set! msf-edges (cons edge msf-edges))))
+          (loop))))
+    #:max n)
 
   (reverse msf-edges))
 
@@ -222,7 +225,6 @@
   (define repeat 3)
   (define log-path #f)
   (define seed 42)
-  (define strategy 'futures)
 
   (void
    (command-line
@@ -240,12 +242,8 @@
      (set! repeat (parse-positive-integer arg 'msf))]
     [("--seed") arg "Random seed"
      (set! seed (parse-positive-integer arg 'msf))]
-    [("--strategy") arg "Parallel strategy: threads or futures"
-     (set! strategy (string->symbol arg))]
     [("--log") arg "S-expression log path"
      (set! log-path arg)]))
-
-  (set-parallel-strategy! strategy)
 
   ;; Load or generate graph
   (define graph
@@ -268,8 +266,7 @@
   (define params (list (list 'n num-vertices)
                        (list 'edges num-edges)
                        (list 'workers workers)
-                       (list 'seed seed)
-                       (list 'strategy strategy)))
+                       (list 'seed seed)))
 
   (printf "Running sequential MSF (Kruskal)...\n")
   (define seq-result

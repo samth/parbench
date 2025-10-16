@@ -1,10 +1,11 @@
 #lang racket
-(require racket/future         ; processor-count
+(require racket/place          ; processor-count
          racket/match
          racket/string
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt")
+         "../common/logging.rkt"
+         "../common/parallel.rkt")
 
 (provide vector-boyer-moore-majority/sequential
          vector-boyer-moore-majority/parallel

@@ -20,31 +20,35 @@
 ;; Parallel histogram: partition data, compute local histograms, then merge
 (define (histogram-parallel data buckets workers)
   (define n (vector-length data))
-  (define chunk-size (quotient (+ n workers -1) workers))
+  (call-with-thread-pool workers
+    (λ (pool actual-workers)
+      (define chunk-size (quotient (+ n actual-workers -1) actual-workers))
 
-  ;; Compute local histograms in parallel
-  (define local-hists
-    (for/list ([w (in-range workers)])
-      (define start (* w chunk-size))
-      (define end (min (+ start chunk-size) n))
-      (future
-       (λ ()
-         (define local-counts (make-vector buckets 0))
-         (for ([i (in-range start end)])
-           (define val (vector-ref data i))
-           (define idx (modulo val buckets))
-           (vector-set! local-counts idx (fx+ 1 (vector-ref local-counts idx))))
-         local-counts))))
+      ;; Compute local histograms in parallel
+      (define local-hists
+        (thread-pool-wait/collect
+         (for/list ([w (in-range actual-workers)])
+           (define start (* w chunk-size))
+           (define end (min (+ start chunk-size) n))
+           (thread-pool-submit
+            pool
+            (λ ()
+              (define local-counts (make-vector buckets 0))
+              (for ([i (in-range start end)])
+                (define val (vector-ref data i))
+                (define idx (modulo val buckets))
+                (vector-set! local-counts idx (fx+ 1 (vector-ref local-counts idx))))
+              local-counts)))))
 
-  ;; Wait for all futures and merge results
-  (define result (make-vector buckets 0))
-  (for ([fut (in-list local-hists)])
-    (define local-counts (touch fut))
-    (for ([bucket (in-range buckets)])
-      (vector-set! result bucket
-                   (fx+ (vector-ref result bucket)
-                        (vector-ref local-counts bucket)))))
-  result)
+      ;; Merge results
+      (define result (make-vector buckets 0))
+      (for ([local-counts (in-list local-hists)])
+        (for ([bucket (in-range buckets)])
+          (vector-set! result bucket
+                       (fx+ (vector-ref result bucket)
+                            (vector-ref local-counts bucket)))))
+      result)
+    #:max (if (zero? n) 1 n)))
 
 ;; Generate random test data
 (define (generate-random-data n range seed)
@@ -65,7 +69,6 @@
   (define repeat 3)
   (define log-path #f)
   (define seed 42)
-  (define strategy 'threads)
 
   (void
    (command-line
@@ -81,12 +84,8 @@
      (set! repeat (parse-positive-integer arg 'histogram))]
     [("--seed") arg "Random seed"
      (set! seed (parse-positive-integer arg 'histogram))]
-    [("--strategy") arg "Parallel strategy: threads or futures"
-     (set! strategy (string->symbol arg))]
     [("--log") arg "S-expression log path"
      (set! log-path arg)]))
-
-  (set-parallel-strategy! strategy)
 
   (printf "Generating random data (n=~a, range=[0,~a))...\n" n buckets)
   (define data (generate-random-data n buckets seed))
@@ -96,8 +95,7 @@
   (define params (list (list 'n n)
                        (list 'buckets buckets)
                        (list 'workers workers)
-                       (list 'seed seed)
-                       (list 'strategy strategy)))
+                       (list 'seed seed)))
 
   (printf "Running sequential histogram...\n")
   (define seq-result

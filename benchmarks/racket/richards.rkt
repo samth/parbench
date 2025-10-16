@@ -1,9 +1,10 @@
 #lang racket
 
-(require racket/future
+(require racket/place
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt")
+         "../common/logging.rkt"
+         "../common/parallel.rkt")
 
 (provide run-richards-sequential
          run-richards-parallel
@@ -369,13 +370,20 @@
     [else
      (define worker-count (max 1 (min workers iterations)))
      (define chunk (max 1 (quotient (+ iterations worker-count -1) worker-count)))
-     (define futures
-       (for/list ([start (in-range 0 iterations chunk)])
-         (define remaining (- iterations start))
-         (define count (min remaining chunk))
-         (future (λ () (run-richards-sequential #:iterations count #:verify? #f)))))
+     (define tasks
+       (call-with-thread-pool workers
+         (λ (pool actual-workers)
+           (thread-pool-wait/collect
+            (for/list ([start (in-range 0 iterations chunk)])
+              (define remaining (- iterations start))
+              (define count (min remaining chunk))
+              (thread-pool-submit
+               pool
+               (λ () (run-richards-sequential #:iterations count #:verify? #f))))))
+         #:max (ceiling (/ iterations chunk))))
      (define-values (q h)
-       (sum-results (for/list ([f futures]) (touch f))))
+       (sum-results (for/list ([values (in-list tasks)])
+                      (first values))))
      (define result (richards-result q h))
      (when verify?
        (verify-result result iterations))

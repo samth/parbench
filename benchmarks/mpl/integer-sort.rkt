@@ -37,30 +37,34 @@
 ;; Parallel counting sort: parallel counting and scattering
 (define (integer-sort-parallel data range workers)
   (define n (vector-length data))
-  (define chunk-size (quotient (+ n workers -1) workers))
-
-  ;; Step 1: Parallel counting - each worker counts its partition
-  (define local-counts-list
-    (for/list ([w (in-range workers)])
-      (define start (* w chunk-size))
-      (define end (min (+ start chunk-size) n))
-      (future
-       (λ ()
-         (define local-counts (make-vector range 0))
-         (for ([i (in-range start end)])
-           (define val (vector-ref data i))
-           (vector-set! local-counts val
-                        (fx+ 1 (vector-ref local-counts val))))
-         local-counts))))
-
-  ;; Step 2: Merge local counts
-  (define global-counts (make-vector range 0))
-  (for ([fut (in-list local-counts-list)])
-    (define local-counts (touch fut))
-    (for ([bucket (in-range range)])
-      (vector-set! global-counts bucket
-                   (fx+ (vector-ref global-counts bucket)
-                        (vector-ref local-counts bucket)))))
+  (define global-counts
+    (call-with-thread-pool workers
+      (λ (pool actual-workers)
+        (define chunk-size (quotient (+ n actual-workers -1) actual-workers))
+        ;; Step 1: Parallel counting - each worker counts its partition
+        (define local-counts-list
+          (thread-pool-wait/collect
+           (for/list ([w (in-range actual-workers)])
+             (define start (* w chunk-size))
+             (define end (min (+ start chunk-size) n))
+             (thread-pool-submit
+              pool
+              (λ ()
+                (define local-counts (make-vector range 0))
+                (for ([i (in-range start end)])
+                  (define val (vector-ref data i))
+                  (vector-set! local-counts val
+                               (fx+ 1 (vector-ref local-counts val))))
+                local-counts))))))
+        ;; Step 2: Merge local counts
+        (define merged (make-vector range 0))
+        (for ([local-counts (in-list local-counts-list)])
+          (for ([bucket (in-range range)])
+            (vector-set! merged bucket
+                         (fx+ (vector-ref merged bucket)
+                              (vector-ref local-counts bucket)))))
+        merged)
+      #:max (if (zero? n) 1 n)))
 
   ;; Step 3: Compute prefix sums
   (define positions (make-vector range 0))
@@ -107,7 +111,6 @@
   (define repeat 3)
   (define log-path #f)
   (define seed 42)
-  (define strategy 'threads)
 
   (void
    (command-line
@@ -123,12 +126,8 @@
      (set! repeat (parse-positive-integer arg 'integer-sort))]
     [("--seed") arg "Random seed"
      (set! seed (parse-positive-integer arg 'integer-sort))]
-    [("--strategy") arg "Parallel strategy: threads or futures"
-     (set! strategy (string->symbol arg))]
     [("--log") arg "S-expression log path"
      (set! log-path arg)]))
-
-  (set-parallel-strategy! strategy)
 
   (printf "Generating random data (n=~a, range=[0,~a))...\n" n range)
   (define data (generate-random-data n range seed))
@@ -138,8 +137,7 @@
   (define params (list (list 'n n)
                        (list 'range range)
                        (list 'workers workers)
-                       (list 'seed seed)
-                       (list 'strategy strategy)))
+                       (list 'seed seed)))
 
   (printf "Running sequential integer sort...\n")
   (define seq-result

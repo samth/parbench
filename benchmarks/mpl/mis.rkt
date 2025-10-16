@@ -76,57 +76,63 @@
   (random-seed seed)
 
   ;; Iterate until all vertices are processed
-  (let loop ([round 0])
-    (when (> active-count 0)
-      ;; Assign random priorities to active vertices
-      (define priorities (make-vector n 0))
-      (for ([v (in-range n)]
-            #:when (vector-ref active v))
-        (vector-set! priorities v (random 1000000000)))
+  (call-with-thread-pool workers
+    (λ (pool actual-workers)
+      (let loop ([round 0])
+        (when (> active-count 0)
+          ;; Assign random priorities to active vertices
+          (define priorities (make-vector n 0))
+          (for ([v (in-range n)]
+                #:when (vector-ref active v))
+            (vector-set! priorities v (random 1000000000)))
 
-      ;; Find local maxima in parallel
-      (define chunk-size (quotient (+ n workers -1) workers))
-      (define local-maxima-futures
-        (for/list ([w (in-range workers)])
-          (define start (* w chunk-size))
-          (define end (min (+ start chunk-size) n))
-          (future
-           (λ ()
-             (define local-max (make-vector n #f))
-             (for ([v (in-range start end)]
-                   #:when (vector-ref active v))
-               (define v-priority (vector-ref priorities v))
-               (define is-max
-                 (for/and ([u (in-vector (vector-ref graph v))])
-                   (or (not (vector-ref active u))
-                       (> v-priority (vector-ref priorities u)))))
-               (when is-max
-                 (vector-set! local-max v #t)))
-             local-max))))
+          ;; Find local maxima in parallel
+          (define chunk-size (quotient (+ n actual-workers -1) actual-workers))
+          (define local-maxima-threads
+            (for/list ([w (in-range actual-workers)])
+              (define start (* w chunk-size))
+              (define end (min (+ start chunk-size) n))
+              (and (< start end)
+                   (thread-pool-submit
+                    pool
+                    (λ ()
+                      (define local-max (make-vector n #f))
+                      (for ([v (in-range start end)]
+                            #:when (vector-ref active v))
+                        (define v-priority (vector-ref priorities v))
+                        (define is-max
+                          (for/and ([u (in-vector (vector-ref graph v))])
+                            (or (not (vector-ref active u))
+                                (> v-priority (vector-ref priorities u)))))
+                        (when is-max
+                          (vector-set! local-max v #t)))
+                      local-max)))))
 
-      ;; Collect results
-      (define local-maxima (make-vector n #f))
-      (for ([fut (in-list local-maxima-futures)])
-        (define partial (touch fut))
-        (for ([v (in-range n)])
-          (when (vector-ref partial v)
-            (vector-set! local-maxima v #t))))
+          ;; Collect results
+          (define local-maxima (make-vector n #f))
+          (for ([task (in-list local-maxima-threads)])
+            (when task
+              (define partial (thread-pool-wait task))
+              (for ([v (in-range n)])
+                (when (vector-ref partial v)
+                  (vector-set! local-maxima v #t)))))
 
-      ;; Add local maxima to MIS and remove them and their neighbors
-      (define new-removed 0)
-      (for ([v (in-range n)]
-            #:when (vector-ref local-maxima v))
-        (vector-set! in-mis v #t)
-        (vector-set! active v #f)
-        (set! new-removed (add1 new-removed))
-        ;; Remove neighbors
-        (for ([u (in-vector (vector-ref graph v))])
-          (when (vector-ref active u)
-            (vector-set! active u #f)
-            (set! new-removed (add1 new-removed)))))
+          ;; Add local maxima to MIS and remove them and their neighbors
+          (define new-removed 0)
+          (for ([v (in-range n)]
+                #:when (vector-ref local-maxima v))
+            (vector-set! in-mis v #t)
+            (vector-set! active v #f)
+            (set! new-removed (add1 new-removed))
+            ;; Remove neighbors
+            (for ([u (in-vector (vector-ref graph v))])
+              (when (vector-ref active u)
+                (vector-set! active u #f)
+                (set! new-removed (add1 new-removed)))))
 
-      (set! active-count (- active-count new-removed))
-      (loop (add1 round))))
+          (set! active-count (- active-count new-removed))
+          (loop (add1 round)))))
+    #:max (if (zero? n) 1 n))
 
   ;; Return list of vertices in MIS
   (for/list ([v (in-range n)]
@@ -183,7 +189,6 @@
   (define repeat 3)
   (define log-path #f)
   (define seed 42)
-  (define strategy 'futures)
 
   (void
    (command-line
@@ -201,12 +206,8 @@
      (set! repeat (parse-positive-integer arg 'mis))]
     [("--seed") arg "Random seed"
      (set! seed (parse-positive-integer arg 'mis))]
-    [("--strategy") arg "Parallel strategy: threads or futures"
-     (set! strategy (string->symbol arg))]
     [("--log") arg "S-expression log path"
      (set! log-path arg)]))
-
-  (set-parallel-strategy! strategy)
 
   ;; Load or generate graph
   (define graph
@@ -229,8 +230,7 @@
   (define params (list (list 'n num-vertices)
                        (list 'edges num-edges)
                        (list 'workers workers)
-                       (list 'seed seed)
-                       (list 'strategy strategy)))
+                       (list 'seed seed)))
 
   (printf "Running sequential MIS...\n")
   (define seq-result

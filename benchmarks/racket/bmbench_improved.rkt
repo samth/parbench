@@ -1,11 +1,12 @@
 #lang racket
 
-(require racket/future
+(require racket/place
          racket/match
          racket/string
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt")
+         "../common/logging.rkt"
+         "../common/parallel.rkt")
 
 (provide vector-boyer-moore-majority/sequential
          vector-boyer-moore-majority/parallel/improved
@@ -78,22 +79,28 @@
     [else
      (define chunk-count (compute-chunk-count n workers chunk-size chunk-multiplier threshold))
      (define ranges (chunk-ranges n chunk-count))
-     (define scans
-       (for/list ([rg (in-list ranges)])
-         (define start (car rg))
-         (define end (cdr rg))
-         (future (λ () (bm-scan-vec v start end equal)))))
      (define-values (cand cnt)
-       (let loop ([fs scans] [cand #f] [cnt 0])
-         (cond
-           [(null? fs) (values cand cnt)]
-           [else
-            (define-values (c n) (touch (car fs)))
-            (define-values (new-c new-n)
-              (if cand
-                  (bm-merge cand cnt c n equal)
-                  (values c n)))
-            (loop (cdr fs) new-c new-n)])))
+       (call-with-thread-pool workers
+         (λ (pool actual-workers)
+           (define results
+             (thread-pool-wait/collect
+              (for/list ([rg (in-list ranges)])
+                (define start (car rg))
+                (define end (cdr rg))
+                (thread-pool-submit pool (λ () (bm-scan-vec v start end equal))))))
+           (let loop ([vals results] [cand #f] [cnt 0])
+             (cond
+               [(null? vals) (values cand cnt)]
+               [else
+                (define pair (car vals))
+                (define c (first pair))
+                (define n (second pair))
+                (define-values (next-c next-n)
+                  (if cand
+                      (bm-merge cand cnt c n equal)
+                      (values c n)))
+                (loop (cdr vals) next-c next-n)])))
+         #:max chunk-count))
      (bm-verify-vec v cand equal)]))
 
 ;; -------- Work generator and heavy equality --------
@@ -160,7 +167,7 @@
     (set! rng-seed (maybe-parse-seed arg 'bmbench-improved))]
    [("--threshold") arg "Vector length threshold below which runs stay sequential."
     (set! threshold (parse-positive-integer arg 'bmbench-improved))]
-   [("--chunk-size") arg "Preferred chunk size per future (default auto)."
+   [("--chunk-size") arg "Preferred chunk size per worker (default auto)."
     (set! chunk-size (if (or (string-ci=? arg "auto") (string-ci=? arg "none"))
                          #f
                          (parse-positive-integer arg 'bmbench-improved)))]
