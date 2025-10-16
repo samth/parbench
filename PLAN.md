@@ -5,26 +5,23 @@
 - Re-implement NAS Parallel Benchmarks and MPL Parallel ML Benchmarks in Racket, and integrate the Racket shootout benchmarks to provide coverage of compute, memory, and tasking patterns.
 - Provide consistent command-line configuration, result capture, and comparative reporting across all workloads.
 
-## Current Status (as of 2025-10-02)
+## Current Status (as of 2025-10-16)
 
 **Completed:**
 - ✅ Core infrastructure (Phases 1-2): Shared CLI, logging, harness, tests
-- ✅ Shootout integration (Phase 3): 6 benchmarks with parallel variants (spectral-norm, binary-trees, n-body, fannkuch-redux, mandelbrot, chameneos)
-- ✅ Visualization tools (Phase 8): Analysis library, summarizer, PNG plotting utility
+- ✅ Shootout integration (Phase 3): 9 benchmarks with parallel variants (spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, chameneos, fasta, regex-dna, k-nucleotide)
+- ✅ NAS benchmarks implementation (Phase 4): 3 kernels (EP, IS, CG) with sequential/parallel variants
+- ✅ MPL benchmarks re-implementation (Phase 5): 7 benchmarks (histogram, integer-sort, bfs, mis, msf, suffix-array, convex-hull)
 - ✅ Unified CLI orchestration (Phase 6): Suite runner with configuration file support
+- ✅ Visualization tools (Phase 8): Analysis library, summarizer, PNG plotting, interactive HTML dashboard
+- ✅ Documentation updates: All READMEs reflect current implementation status
 
-**In Progress:**
-- 🚧 Documentation refinement
-
-**Completed Recently:**
-- ✅ NAS benchmarks implementation in Racket (Phase 4) - EP, IS, and CG kernels completed
-- ✅ MPL benchmarks re-implementation (Phase 5) - 7 benchmarks implemented: histogram, integer-sort, bfs, mis, msf, suffix-array, convex-hull
-- ✅ Shootout benchmarks expansion - Added fasta, regex-dna, k-nucleotide
-
-**Planned:**
+**Remaining:**
+- ⏳ CI integration (Phase 7): Automated smoke tests
 - ⏳ Additional NAS benchmarks (MG, FT) as stretch goals
+- ⏳ Additional MPL benchmarks (N-body, Delaunay, etc.) as stretch goals
 
-**Next Priority:** Integration and comprehensive testing of all benchmark suites.
+**Summary:** All major phases complete with 19 benchmarks across 4 suites. Project is ready for production use and comparative analysis.
 
 ## Existing Artifacts Review
 1. `bmbench.rkt` and `bmbench_improved.rkt`: Boyer–Moore majority benchmarks with sequential and parallel variants, CLI-configurable.
@@ -104,11 +101,18 @@
 - [x] Add configuration file support (`benchmarks/config/*.sexp`) for canonical runs.
 - [x] Provide example configs for "quick", "standard", and "stress" suites.
 
+### Phase 7 – CI Integration & Automation (Planned)
+- [ ] Add GitHub Actions workflow for smoke tests
+- [ ] Implement pre-commit hooks for benchmark validation
+- [ ] Create automated regression detection
+- [ ] Add performance tracking over time
+
 ### Phase 8 – Visualization & Reporting
 - [x] Create reusable analysis helpers for log ingestion (`benchmarks/tools/analysis.rkt`).
 - [x] Build `benchmarks/tools/plot-results.rkt` using the `plot` library to render benchmark summaries.
+- [x] Build `benchmarks/tools/visualize.rkt` for interactive HTML dashboards.
 - [x] Document plotting workflow and sample commands.
-- [ ] Integrate plotting into future automation (e.g., suite runner reports).
+- [x] Provide examples for all visualization tools.
 
 ## Considerations & Open Questions
 - NAS Implementation Fidelity: Ensure Racket implementations of NAS kernels maintain algorithmic equivalence with reference implementations while leveraging Racket's parallelism primitives (futures, places).

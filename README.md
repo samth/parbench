@@ -6,9 +6,10 @@ A comprehensive, reproducible benchmarking harness for evaluating parallel perfo
 
 This repository provides:
 - **Racket Benchmarks**: Boyer-Moore, Richards, and synthetic workloads with sequential and parallel (futures/threads) variants
-- **Shootout Benchmarks**: Classic language benchmark game workloads adapted for parallel execution (spectral-norm, binary-trees, n-body, fannkuch-redux, mandelbrot, chameneos)
-- **NAS Parallel Benchmarks**: Wrapper infrastructure for running compiled NAS kernels with structured logging
-- **Analysis Tools**: Log aggregation, statistical summaries, and visualization utilities
+- **Shootout Benchmarks**: 9 classic language benchmark game workloads adapted for parallel execution (spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, chameneos, fasta, regex-dna, k-nucleotide)
+- **NAS Parallel Benchmarks**: 3 Racket re-implementations of NPB kernels (EP, IS, CG) with sequential and parallel variants
+- **MPL Parallel Benchmarks**: 7 Racket re-implementations of MPL benchmark algorithms (histogram, integer-sort, bfs, mis, msf, suffix-array, convex-hull)
+- **Analysis Tools**: Log aggregation, statistical summaries, PNG plotting, and interactive HTML visualization dashboard
 
 All benchmarks share a common infrastructure:
 - Command-line argument parsing with `--log`, `--workers`, `--repeat` flags
@@ -87,20 +88,35 @@ tests/              # RackUnit test suite
 - **fannkuch-redux.rkt** - Indexed access to permutations
 - **mandelbrot.rkt** - Mandelbrot set fractal generation
 - **chameneos.rkt** - Thread coordination benchmark
+- **fasta.rkt** - DNA sequence generation
+- **regex-dna.rkt** - Regex pattern matching on DNA sequences
+- **k-nucleotide.rkt** - K-mer frequency analysis
 
-### External Suites
-- **NAS Parallel Benchmarks** - EP, MG, FT, and other kernels (requires external compilation)
+### NAS Parallel Benchmarks
+- **ep.rkt** - Embarrassingly Parallel (Gaussian random deviates)
+- **is.rkt** - Integer Sort (bucket sort)
+- **cg.rkt** - Conjugate Gradient (sparse matrix solver)
+
+### MPL Parallel Benchmarks
+- **histogram.rkt** - Parallel histogram with bucketed counting
+- **integer-sort.rkt** - Parallel counting sort
+- **bfs.rkt** - Breadth-first search (level-synchronous)
+- **mis.rkt** - Maximal Independent Set (Luby's algorithm)
+- **msf.rkt** - Minimum Spanning Forest (Borůvka's algorithm)
+- **suffix-array.rkt** - Suffix array construction (prefix-doubling)
+- **convex-hull.rkt** - Convex hull (parallel QuickHull)
 
 ## Development Status
 
-This is an active development project. Current phase focus:
+This is an active development project with most core features complete:
 - ✅ Phase 1-2: Core infrastructure and logging (complete)
-- ✅ Phase 3: Shootout benchmarks integration (6 benchmarks complete)
-- ✅ Phase 8: Visualization and plotting tools (complete)
-- 🚧 Phase 4: NAS benchmarks (runner infrastructure complete, source vendoring pending)
-- 🚧 Phase 6: Unified CLI orchestration (in progress)
-- ⏳ Phase 5: MPL benchmarks (planned)
+- ✅ Phase 3: Shootout benchmarks integration (9 benchmarks complete)
+- ✅ Phase 4: NAS benchmarks (3 kernels: EP, IS, CG complete)
+- ✅ Phase 5: MPL benchmarks (7 benchmarks complete)
+- ✅ Phase 6: Unified CLI orchestration (complete with config file support)
+- ✅ Phase 8: Visualization and plotting tools (complete with interactive HTML dashboard)
 - ⏳ Phase 7: CI integration (planned)
+- ⏳ Additional NAS kernels (MG, FT) and MPL benchmarks (stretch goals)
 
 See [PLAN.md](PLAN.md) for detailed roadmap and progress tracking.
 

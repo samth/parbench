@@ -202,24 +202,24 @@ Metrics supported: `real` (default) or `cpu`. The script computes means across a
 
 ### NAS Parallel Benchmarks
 
-The NAS suite provides Racket implementations of selected NPB kernels:
+The NAS suite provides Racket re-implementations of selected NPB kernels with sequential and parallel variants:
 
 ```bash
-# EP (Embarrassingly Parallel) benchmark
+# EP (Embarrassingly Parallel) - Gaussian random deviates
 racket benchmarks/nas/ep.rkt \
   --class A \
   --workers 8 \
   --repeat 3 \
   --log logs/nas-ep.sexp
 
-# IS (Integer Sort) benchmark
+# IS (Integer Sort) - Bucket sort
 racket benchmarks/nas/is.rkt \
   --class W \
   --workers 4 \
   --repeat 3 \
   --log logs/nas-is.sexp
 
-# CG (Conjugate Gradient) benchmark
+# CG (Conjugate Gradient) - Sparse matrix solver
 racket benchmarks/nas/cg.rkt \
   --class S \
   --workers 4 \
@@ -228,6 +228,70 @@ racket benchmarks/nas/cg.rkt \
 ```
 
 Each benchmark supports problem classes S (small), W (workload), A, B, and C (increasing computational intensity). Use `--class` to select the problem size, `--workers` for parallel execution, and `--repeat` to run multiple iterations for statistical averaging.
+
+### MPL Parallel Benchmarks
+
+The MPL suite provides Racket re-implementations of algorithms from the MPL Parallel ML Benchmark suite:
+
+```bash
+# Histogram - Parallel bucketed counting
+racket benchmarks/mpl/histogram.rkt \
+  --n 10000000 \
+  --buckets 256 \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/mpl-histogram.sexp
+
+# Integer Sort - Parallel counting sort
+racket benchmarks/mpl/integer-sort.rkt \
+  --n 10000000 \
+  --range 1000000 \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/mpl-isort.sexp
+
+# BFS - Level-synchronous breadth-first search
+racket benchmarks/mpl/bfs.rkt \
+  --n 10000 \
+  --degree 10 \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/mpl-bfs.sexp
+
+# MIS - Maximal Independent Set (Luby's algorithm)
+racket benchmarks/mpl/mis.rkt \
+  --n 10000 \
+  --degree 10 \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/mpl-mis.sexp
+
+# MSF - Minimum Spanning Forest (Borůvka's algorithm)
+racket benchmarks/mpl/msf.rkt \
+  --n 1000 \
+  --degree 10 \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/mpl-msf.sexp
+
+# Suffix Array - Parallel prefix-doubling
+racket benchmarks/mpl/suffix-array.rkt \
+  --n 100000 \
+  --alphabet 4 \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/mpl-suffix-array.sexp
+
+# Convex Hull - Parallel QuickHull
+racket benchmarks/mpl/convex-hull.rkt \
+  --n 10000 \
+  --distribution uniform-circle \
+  --workers 8 \
+  --repeat 3 \
+  --log logs/mpl-convex-hull.sexp
+```
+
+Each benchmark provides sequential and parallel variants, with tunable problem sizes and worker counts.
 
 ## Running Multiple Benchmarks
 
