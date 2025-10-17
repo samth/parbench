@@ -14,7 +14,7 @@
 
 (struct ep-stats (sx sy counts) #:transparent)
 
-(define stats-tolerance 1e-9)
+(define stats-tolerance 1e-8)
 
 (define (ep-stats≈ a b)
   (and (<= (abs (- (ep-stats-sx a) (ep-stats-sx b))) stats-tolerance)

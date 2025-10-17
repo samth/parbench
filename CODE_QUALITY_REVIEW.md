@@ -42,17 +42,11 @@ This review identifies **critical issues, design weaknesses, and technical debt*
 
 ### 1.2 Fannkuch Parallel Implementation is Sequential
 
+**Status:** Fixed (2025-10-16) — `benchmarks/shootout/fannkuch-redux.rkt` now splits the permutation space across a shared thread pool using `thread #:pool`, and the parallel variant computes per-chunk results before reduction.
+
 **Location:** `benchmarks/shootout/fannkuch-redux.rkt:64-65`
 
-**Issue:** The "parallel" variant is literally just calling the sequential version:
-
-```racket
-(define (fannkuch-parallel n workers)
-  (fannkuch-sequential n))
-```
-
-**Impact:** HIGH - False performance claims, misleading benchmark results
-**Recommendation:** Either implement true parallelization or remove the parallel variant entirely
+**Resolution:** The parallel entry point now partitions the factorial range into chunks, submits them via `thread-pool-submit`, and reduces the results to produce accurate checksums and maximum flip counts.
 
 ---
 
@@ -100,20 +94,11 @@ This review identifies **critical issues, design weaknesses, and technical debt*
 
 ### 1.6 CG Benchmark Missing Parallel Implementation
 
+**Status:** Fixed (2025-10-16) — `benchmarks/nas/cg.rkt` parallelizes sparse matvecs, dot-products, and SAXPY steps via pooled threads, honoring the `workers` parameter.
+
 **Location:** `benchmarks/nas/cg.rkt:247-297`
 
-**Issue:** The conjugate gradient solver always runs sequentially, ignoring the `workers` parameter:
-
-```racket
-(define (conj-grad mat x z workers)
-  ;; 'workers' parameter is completely ignored
-  ;; All operations are sequential
-  (sparse-matvec-seq mat p q)  ;; Always sequential
-  ...)
-```
-
-**Impact:** HIGH - False claims about parallel performance, misleading results
-**Recommendation:** Implement parallel sparse matrix-vector multiply or remove workers parameter
+**Resolution:** Conjugate Gradient work is chunked across pooled threads for sparse matvecs, dot products, and vector updates while preserving convergence semantics, so the `workers` flag now drives real parallel work.
 
 ---
 
@@ -141,20 +126,9 @@ This can cause:
 
 ### 2.1 Parallel Strategy Inconsistency
 
-**Issue:** The codebase has inconsistent parallel execution strategies:
+**Status:** Fixed (2025-10-16) — all benchmarks now standardize on thread pools (`thread #:pool`), the shared helpers enforce a `threads`-only strategy, and suite orchestration uses the same pool interface.
 
-1. **Futures** - Used in: EP, IS, histogram, bmbench_improved
-2. **Threads with pools** - Used in: bmbench, binary-trees, spectral-norm
-3. **Plain threads** - Used in: nbody
-4. **Strategy parameter** - Some benchmarks support switching, others don't
-
-**Location:** Various benchmark files
-
-**Impact:** MEDIUM - Confusion about best practices, inconsistent performance characteristics
-**Recommendation:**
-- Document when to use each strategy
-- Standardize on one approach per benchmark category
-- Make strategy selection consistent across all benchmarks
+**Resolution:** Futures/places paths were removed, pooled threads back every parallel benchmark, the shared strategy setter rejects non-thread modes, and orchestration (`run-suite.rkt`) now uses the same pooling utility instead of ad-hoc threads.
 
 ---
 
