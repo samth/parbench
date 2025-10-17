@@ -132,7 +132,11 @@
            (thread-pool-submit pool (λ () (process-range start end))))))
       #:max (length ranges)))
   (for ([result-values (in-list results)])
-    (merge-tables! table (first result-values)))
+    (define chunk-table
+      (cond
+        [(and (list? result-values) (pair? result-values)) (first result-values)]
+        [else result-values]))
+    (merge-tables! table chunk-table))
   (finalize-table table))
 
 (define (rows1b-results=? a b)
