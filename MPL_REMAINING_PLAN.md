@@ -2,10 +2,21 @@
 
 ## Executive Summary
 
-This document outlines a plan to add the **remaining benchmarks** from the MPL (MaPLe) Parallel ML benchmark suite to this Racket parallel benchmarking repository. The MPL suite is based on the Problem-Based Benchmark Suite (PBBS) and contains ~30 benchmarks. We have already implemented **7 benchmarks**; this plan covers the **remaining ~15-18 benchmarks** that are suitable for Racket porting.
+This document outlines a plan to add the **remaining benchmarks** from the MPL (MaPLe) Parallel ML benchmark suite to this Racket parallel benchmarking repository.
 
-**MPL Repository:** https://github.com/MPLLang/parallel-ml-bench
-**PBBS Repository:** https://github.com/cmuparlay/pbbsbench
+**Important Note:** This plan is primarily based on the **PBBS (Problem-Based Benchmark Suite)** V2, which the MPL suite is stated to be derived from. While MPL documentation indicates the suite contains ~30 benchmarks ported from PBBS, ParlayLib, Ligra, and PAM, **we were unable to access the exact contents of the MPL parallel-ml-bench repository directly**. Therefore, this plan uses PBBS as the authoritative source and makes reasonable assumptions about MPL's benchmark selection.
+
+We have already implemented **7 benchmarks** based on PBBS; this plan covers the **remaining ~15-18 benchmarks** that are suitable for Racket porting.
+
+**MPL Repository:** https://github.com/MPLLang/parallel-ml-bench (exact benchmark list not confirmed)
+**PBBS Repository:** https://github.com/cmuparlay/pbbsbench (confirmed source)
+
+### Methodology & Limitations
+
+- **Source:** PBBS V2 benchmark suite (22 core benchmarks documented at https://cmuparlay.github.io/pbbsbench/)
+- **Assumption:** MPL parallel-ml-bench includes most/all PBBS benchmarks
+- **Uncertainty:** MPL-specific benchmarks (tokens, dmm, primes) mentioned in commit messages and documentation but not directly verified
+- **Verification needed:** Before implementing Phase 2-4, should attempt to access MPL repository directly or contact maintainers for accurate benchmark list
 
 ## Current State Analysis
 
@@ -674,9 +685,18 @@ Some benchmarks appear in both plans:
 
 ## Next Steps
 
-1. **Review this plan** with project stakeholders
-2. **Prioritize Phase 1 benchmarks** (comparison-sort, remove-duplicates, maximal-matching)
-3. **Begin implementation** with comparison-sort as pilot
-4. **Update benchmarks/mpl/README.md** to reflect new benchmarks as they're added
-5. **Coordinate with Sandmark plan** for overlapping benchmarks (dmm, sorting)
-6. **Set up test infrastructure** for new benchmark categories
+1. **VERIFY MPL BENCHMARK LIST** - Attempt to access the actual MPL parallel-ml-bench repository to confirm which benchmarks are actually implemented
+   - Options: Clone the repo directly, contact MPL maintainers, find recent papers with complete benchmark lists
+   - This is critical before committing significant implementation effort
+
+2. **Review this plan** with project stakeholders, acknowledging PBBS-based assumptions
+
+3. **Prioritize Phase 1 benchmarks** (comparison-sort, remove-duplicates, maximal-matching) - these are safe bets as they're in PBBS
+
+4. **Begin implementation** with comparison-sort as pilot
+
+5. **Update benchmarks/mpl/README.md** to reflect new benchmarks as they're added
+
+6. **Coordinate with Sandmark plan** for overlapping benchmarks (dmm, sorting)
+
+7. **Set up test infrastructure** for new benchmark categories
