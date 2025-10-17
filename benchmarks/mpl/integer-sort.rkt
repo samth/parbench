@@ -55,7 +55,7 @@
                   (define val (vector-ref data i))
                   (vector-set! local-counts val
                                (fx+ 1 (vector-ref local-counts val))))
-                local-counts))))))
+                local-counts)))))
         ;; Step 2: Merge local counts
         (define merged (make-vector range 0))
         (for ([local-counts (in-list local-counts-list)])
