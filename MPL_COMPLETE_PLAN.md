@@ -293,6 +293,46 @@ Many MPL benchmarks are:
 - **Value:** Computational geometry
 - **Estimated effort:** 4-5 days
 
+### Phase 5: Toy/Utility Benchmarks (Priority: VERY LOW)
+
+These are simple benchmarks useful for testing infrastructure, debugging, and educational purposes.
+
+**Fibonacci** (`fib.rkt`)
+- **MPL:** `fib`
+- **Description:** Naive recursive parallel Fibonacci
+- **Value:** Trivial parallelism test, good for debugging scheduler
+- **Estimated effort:** 1 day
+
+**Big Number Addition** (`bignum-add.rkt`)
+- **MPL:** `bignum-add`
+- **Description:** Parallel addition of large integers
+- **Value:** Tests chunking and carry propagation
+- **Estimated effort:** 2 days
+
+**Palindrome** (`palindrome.rkt`)
+- **MPL:** `palindrome`
+- **Description:** Palindrome checking
+- **Value:** Simple string algorithm
+- **Estimated effort:** 1 day
+
+**Shuffle** (`shuffle.rkt`)
+- **MPL:** `shuf`
+- **Description:** Parallel random shuffle
+- **Value:** Tests randomization and permutation
+- **Estimated effort:** 1-2 days
+
+**Flatten** (`flatten.rkt`)
+- **MPL:** `flatten`
+- **Description:** Flatten nested sequences
+- **Value:** Tests sequence operations
+- **Estimated effort:** 1 day
+
+**Collect** (`collect.rkt`)
+- **MPL:** `collect`
+- **Description:** Collect/filter operations
+- **Value:** Tests parallel filtering
+- **Estimated effort:** 1 day
+
 ## Benchmarks NOT to Port
 
 ### Variants (pick one implementation, skip rest)
@@ -303,16 +343,17 @@ Many MPL benchmarks are:
 ### Already Covered
 - Skip `ocaml-*` benchmarks (already have nbody, mandelbrot, binary-trees in shootout)
 
-### Toy/Test Benchmarks
-- Skip `fib` (trivial)
-- Skip `random` (not a real benchmark)
+### Toy/Test Benchmarks - NOW INCLUDED
+- ✓ Include `fib` (Phase 5 - useful for testing)
+- ✓ Include `bignum-add` (Phase 5 - tests carry propagation)
+- ✓ Include `palindrome` (Phase 5 - simple string algorithm)
+- Skip `random` (not a real benchmark, just RNG)
 - Skip `high-frag` (MPL-specific fragmentation test)
-- Skip `bignum-add` (too simple)
 
 ### Utility/Infrastructure
 - Skip `graphio` (utility, not benchmark)
 - Skip `to-gif`, `gif-encode` (image format conversion, not interesting algorithms)
-- Skip `collect`, `flatten`, `shuf` (too simple, test utilities)
+- ✓ Include `collect`, `flatten`, `shuf` (Phase 5 - simple but useful utilities)
 
 ### Audio (unless we want media processing)
 - Skip `reverb`, `tape-delay` (niche, complex DSP)
@@ -338,7 +379,10 @@ Many MPL benchmarks are:
 **Low Priority (Phase 4): 2 benchmarks**
 - primes, interval-tree
 
-**Total to port: 25 benchmarks** (from 84 MPL benchmarks, 7 already done)
+**Very Low Priority (Phase 5): 6 benchmarks**
+- fib, bignum-add, palindrome, shuffle, flatten, collect
+
+**Total to port: 31 benchmarks** (from 84 MPL benchmarks, 7 already done)
 
 ### Implementation Timeline
 
@@ -346,8 +390,9 @@ Many MPL benchmarks are:
 **Phase 2 (Medium-High):** 8 benchmarks, ~7-9 weeks
 **Phase 3 (Medium):** 7 benchmarks, ~6-7 weeks
 **Phase 4 (Low):** 2 benchmarks, ~2-3 weeks
+**Phase 5 (Very Low):** 6 benchmarks, ~1-2 weeks
 
-**Total estimated effort:** ~21-27 weeks (5-7 months) for all 25 benchmarks
+**Total estimated effort:** ~22-29 weeks (5.5-7.5 months) for all 31 benchmarks
 
 ## Implementation Guidelines
 
@@ -432,6 +477,13 @@ benchmarks/mpl/
   # Phase 4 - Primes & Advanced (2)
   primes.rkt
   interval-tree.rkt
+  # Phase 5 - Toy/Utility (6)
+  fib.rkt
+  bignum-add.rkt
+  palindrome.rkt
+  shuffle.rkt
+  flatten.rkt
+  collect.rkt
 ```
 
 ## Coordination with Other Plans
@@ -456,16 +508,18 @@ benchmarks/mpl/
 ## Success Metrics
 
 **Quantitative:**
-- 25 new MPL benchmarks implemented
-- Total MPL suite: 32 benchmarks (7 existing + 25 new)
+- 31 new MPL benchmarks implemented
+- Total MPL suite: 38 benchmarks (7 existing + 31 new)
 - 100% test coverage
 - All benchmarks integrated with suite runner
+- Includes toy/utility benchmarks for testing infrastructure
 
 **Qualitative:**
 - Comprehensive coverage of MPL's diverse algorithm domains
 - Clear attribution to MPL
 - Consistent with existing architecture
 - Valuable for Racket parallel performance evaluation
+- Complete range from complex (delaunay, raytracer) to simple (fib, palindrome)
 
 ## References
 
