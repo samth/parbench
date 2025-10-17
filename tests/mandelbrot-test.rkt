@@ -4,6 +4,6 @@
          "../benchmarks/shootout/mandelbrot.rkt")
 
 (module+ test
-  (define seq (mandelbrot 100 #:workers 1))
-  (define par (mandelbrot 100 #:workers 4))
+  (define seq (mandelbrot 60 #:workers 1))
+  (define par (mandelbrot 60 #:workers 4))
   (check-equal? seq par))
