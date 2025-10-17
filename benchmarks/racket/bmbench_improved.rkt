@@ -146,6 +146,7 @@
   (define chunk-size #f)
   (define chunk-multiplier 2)
   (define log-path #f)
+  (define repeat-override #f)
 
   (void
    (command-line
@@ -173,6 +174,8 @@
                          (parse-positive-integer arg 'bmbench-improved)))]
    [("--chunk-multiplier") arg "Upper bound multiplier for chunks relative to workers."
     (set! chunk-multiplier (parse-positive-integer arg 'bmbench-improved))]
+   [("--repeat") arg "Override per-size benchmark repeat count."
+    (set! repeat-override (parse-positive-integer arg 'bmbench-improved))]
    [("--log") arg "Optional path for S-expression benchmark log."
     (set! log-path arg)]))
 
@@ -183,7 +186,8 @@
     (define metadata (system-metadata))
 
     (define (iterations-for len)
-      (max 1 (exact-round (/ target-work len))))
+      (or repeat-override
+          (max 1 (exact-round (/ target-work len)))))
 
     (define (base-params len repeats)
       (list (list 'size len)

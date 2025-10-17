@@ -137,6 +137,7 @@
   (define majority-kinds 64)
   (define rng-seed 424242)
   (define log-path #f)
+  (define repeat-override #f)
 
   (void
    (command-line
@@ -156,6 +157,8 @@
     (set! majority-kinds (parse-positive-integer arg 'bmbench))]
    [("--seed") arg "Random seed integer, or 'none' to leave RNG state untouched."
     (set! rng-seed (maybe-parse-seed arg 'bmbench))]
+   [("--repeat") arg "Override per-size benchmark repeat count."
+    (set! repeat-override (parse-positive-integer arg 'bmbench))]
    [("--log") arg "Optional path for S-expression benchmark log."
     (set! log-path arg)]))
 
@@ -165,7 +168,8 @@
   (define metadata (system-metadata))
 
   (define (iterations-for len)
-    (max 1 (exact-round (/ target-work len))))
+    (or repeat-override
+        (max 1 (exact-round (/ target-work len)))))
 
   (define (params-for len repeats)
     (list (list 'size len)
