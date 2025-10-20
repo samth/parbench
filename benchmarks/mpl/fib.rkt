@@ -32,7 +32,7 @@
             (fib-sequential n)
             (let ([f1 (thread-pool-submit pool (λ () (fib-par (- n 1))))]
                   [f2 (fib-par (- n 2))])
-              (+ (thread-pool-result-value (thread-pool-wait f1))
+              (+ (thread-pool-wait f1)
                  f2))))
       (fib-par n))
     #:max (expt 2 (max 0 (- n threshold)))))

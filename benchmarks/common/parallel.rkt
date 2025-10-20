@@ -42,7 +42,7 @@
             [worker-count (max 1 (min workers (if (exact-nonnegative-integer? total)
                                                  total
                                                  workers)))]
-            [pool (make-parallel-thread-pool worker-count)]
+            [pool 'parallel-pool]
             [stride (if (zero? worker-count)
                         total
                         (fxquotient total worker-count))])
@@ -59,7 +59,7 @@
                   (for ([i (in-range start end)])
                     body ...)))))
            (for ([t (in-list threads)]) (thread-pool-wait t)))
-         (λ () (parallel-thread-pool-close pool))))]))
+         (λ () (void))))]))
 ;; Create a temporary thread pool, ensure it is closed, and run proc with it.
 (define (call-with-thread-pool workers proc #:max [max-tasks #f])
   (define target (max 1 workers))
@@ -67,8 +67,8 @@
                   [(and max-tasks max-tasks)
                    (max 1 (min target max-tasks))]
                   [else target]))
-  (define pool (make-parallel-thread-pool count))
+  (define pool 'parallel-pool)
   (dynamic-wind
     (λ () (void))
     (λ () (proc pool count))
-    (λ () (parallel-thread-pool-close pool))))
+    (λ () (void))))
