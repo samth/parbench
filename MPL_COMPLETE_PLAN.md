@@ -2,13 +2,15 @@
 
 ## 🎯 Current Status (2025-10-21)
 
-**18/38 MPL benchmarks implemented (47.4%)** | **Phase 5 COMPLETE ✅** | **Phase 3.2 & 3.3 COMPLETE ✅**
+**20/38 MPL benchmarks implemented (52.6%)** | **Phase 4 & 5 COMPLETE ✅** | **Phase 3 PARTIAL ✅**
 
 - ✅ **7 Core benchmarks:** bfs, convex-hull, histogram, integer-sort, mis, msf, suffix-array
 - ✅ **6 Phase 5 (Toy/Utility):** fib, bignum-add, palindrome, shuffle, flatten, collect
 - ✅ **5 Phase 3 (Algorithmic/Puzzle):** nqueens, mcss, subset-sum, parens, dedup
-- 🔜 **Next:** Phase 1 (High Priority) - 8 graph/sorting/text benchmarks OR Phase 3.1 (Image/Media) - 2 benchmarks
-- **Remaining:** 20 benchmarks across Phases 1-4
+- ✅ **1 Phase 4 (Primes):** primes
+- ✅ **1 Phase 1 (Text Processing):** tokens
+- 🔜 **Next:** Phase 1 (High Priority) - 7 more graph/sorting/text benchmarks
+- **Remaining:** 18 benchmarks across Phases 1-3
 
 ## Executive Summary
 
@@ -48,6 +50,12 @@ This document provides an **accurate** plan for implementing remaining benchmark
 16. ✅ **subset-sum** - Subset sum problem
 17. ✅ **parens** - Parentheses matching
 18. ✅ **dedup** - Deduplication
+
+#### Phase 4: Primes (1) - COMPLETED
+19. ✅ **primes** - Segmented sieve of Eratosthenes
+
+#### Phase 1: Text Processing (1 of 3) - IN PROGRESS
+20. ✅ **tokens** - Parallel tokenization
 
 ### All 84 MPL Benchmarks (Categorized)
 
@@ -181,11 +189,12 @@ Many MPL benchmarks are:
 
 #### 1.3 Text Processing
 
-**Tokens** (`tokens.rkt`)
+**Tokens** (`tokens.rkt`) ✅
 - **MPL:** `tokens`
 - **Description:** Parallel tokenization
 - **Value:** Text processing building block
 - **Estimated effort:** 2-3 days
+- **Status:** COMPLETED
 
 **Word Count** (`word-count.rkt`)
 - **MPL:** `wc`
@@ -312,11 +321,12 @@ Many MPL benchmarks are:
 
 ### Phase 4: Primes & Specialized (Priority: LOW)
 
-**Primes - Segmented Sieve** (`primes.rkt`)
+**Primes - Segmented Sieve** (`primes.rkt`) ✅
 - **MPL:** `primes-segmented`
 - **Description:** Segmented sieve of Eratosthenes
 - **Value:** Classic parallel algorithm
 - **Estimated effort:** 3-4 days
+- **Status:** COMPLETED
 
 **Interval Tree** (`interval-tree.rkt`)
 - **MPL:** `interval-tree`
@@ -399,10 +409,10 @@ These are simple benchmarks useful for testing infrastructure, debugging, and ed
 
 ### By Priority
 
-**High Priority (Phase 1): 8 benchmarks**
-- connectivity, triangle-count, centrality (graphs)
-- samplesort, merge-sort (sorting)
-- tokens, word-count, grep (text)
+**High Priority (Phase 1): 8 benchmarks** - 1/8 COMPLETED ✅
+- connectivity, triangle-count, centrality (graphs) - NOT STARTED
+- samplesort, merge-sort (sorting) - NOT STARTED
+- tokens ✅, word-count, grep (text) - 1/3 COMPLETED
 
 **Medium-High Priority (Phase 2): 8 benchmarks**
 - delaunay, nearest-nbrs, skyline, range-tree (geometry)
@@ -413,27 +423,30 @@ These are simple benchmarks useful for testing infrastructure, debugging, and ed
 - nqueens ✅, mcss ✅, subset-sum ✅ (optimization) - COMPLETED
 - parens ✅, dedup ✅ (sequences) - COMPLETED
 
-**Low Priority (Phase 4): 2 benchmarks**
-- primes, interval-tree
+**Low Priority (Phase 4): 2 benchmarks** - 1/2 COMPLETED ✅
+- primes ✅ - COMPLETED
+- interval-tree - NOT STARTED
 
 **Very Low Priority (Phase 5): 6 benchmarks** ✅ **COMPLETED**
 - fib ✅, bignum-add ✅, palindrome ✅, shuffle ✅, flatten ✅, collect ✅
 
 **Total to port: 31 benchmarks** (from 84 MPL benchmarks, 7 already done)
 **Phase 5 COMPLETED: 6/6 benchmarks implemented** ✅
-**Phase 3 (Algorithmic/Puzzle) COMPLETED: 5/7 benchmarks implemented** ✅
-**Overall Progress: 18/38 MPL benchmarks (47.4%)**
+**Phase 4 MOSTLY COMPLETE: 1/2 benchmarks implemented** ✅
+**Phase 3 (Algorithmic/Puzzle) MOSTLY COMPLETE: 5/7 benchmarks implemented** ✅
+**Phase 1 IN PROGRESS: 1/8 benchmarks implemented**
+**Overall Progress: 20/38 MPL benchmarks (52.6%)**
 
 ### Implementation Timeline
 
-**Phase 1 (High):** 8 benchmarks, ~6-8 weeks - NOT STARTED
+**Phase 1 (High):** 8 benchmarks, ~6-8 weeks - ✅ **1/8 COMPLETED** (tokens)
 **Phase 2 (Medium-High):** 8 benchmarks, ~7-9 weeks - NOT STARTED
 **Phase 3 (Medium):** 7 benchmarks, ~6-7 weeks - ✅ **5/7 COMPLETED** (nqueens, mcss, subset-sum, parens, dedup)
-**Phase 4 (Low):** 2 benchmarks, ~2-3 weeks - NOT STARTED
+**Phase 4 (Low):** 2 benchmarks, ~2-3 weeks - ✅ **1/2 COMPLETED** (primes)
 **Phase 5 (Very Low):** 6 benchmarks, ~1-2 weeks - ✅ **COMPLETED**
 
 **Total estimated effort:** ~22-29 weeks (5.5-7.5 months) for all 31 benchmarks
-**Progress:** 11/31 benchmarks completed (35.5%)**
+**Progress:** 13/31 benchmarks completed (41.9%)**
 
 ## Implementation Guidelines
 
@@ -489,13 +502,13 @@ benchmarks/mpl/
   mis.rkt ✅
   msf.rkt ✅
   suffix-array.rkt ✅
-  # Phase 1 - High Priority (8) - NOT STARTED
+  # Phase 1 - High Priority (8) - 1/8 COMPLETED
   connectivity.rkt
   triangle-count.rkt
   centrality.rkt
   samplesort.rkt
   merge-sort.rkt
-  tokens.rkt
+  tokens.rkt ✅
   word-count.rkt
   grep.rkt
   # Phase 2 - Geometry & Numerical (8) - NOT STARTED
@@ -515,8 +528,8 @@ benchmarks/mpl/
   subset-sum.rkt ✅
   parens.rkt ✅
   dedup.rkt ✅
-  # Phase 4 - Primes & Advanced (2) - NOT STARTED
-  primes.rkt
+  # Phase 4 - Primes & Advanced (2) - 1/2 COMPLETED
+  primes.rkt ✅
   interval-tree.rkt
   # Phase 5 - Toy/Utility (6) - ✅ ALL COMPLETED
   fib.rkt ✅
@@ -549,12 +562,14 @@ benchmarks/mpl/
 ## Success Metrics
 
 **Quantitative:**
-- 31 new MPL benchmarks to implement (11/31 completed = 35.5%)
-- Total MPL suite target: 38 benchmarks (18 implemented: 7 core + 6 Phase 5 + 5 Phase 3)
-- 100% test coverage (✅ all 18 implemented benchmarks have tests)
+- 31 new MPL benchmarks to implement (13/31 completed = 41.9%)
+- Total MPL suite target: 38 benchmarks (20 implemented: 7 core + 6 Phase 5 + 5 Phase 3 + 1 Phase 4 + 1 Phase 1)
+- 100% test coverage (✅ all 20 implemented benchmarks have tests)
 - All benchmarks integrated with suite runner
 - ✅ Phase 5 complete: toy/utility benchmarks for testing infrastructure (6/6)
+- ✅ Phase 4 mostly complete: primes benchmark (1/2)
 - ✅ Phase 3 mostly complete: algorithmic/puzzle benchmarks (5/7)
+- 🔄 Phase 1 in progress: text processing (1/8)
 
 **Qualitative:**
 - Comprehensive coverage of MPL's diverse algorithm domains (in progress)
@@ -584,9 +599,11 @@ benchmarks/mpl/
 
 ## Current Status (2025-10-21)
 
-- ✅ **18 MPL benchmarks implemented** (7 core + 6 Phase 5 + 5 Phase 3)
-- ✅ **All 18 have passing tests**
+- ✅ **20 MPL benchmarks implemented** (7 core + 6 Phase 5 + 5 Phase 3 + 1 Phase 4 + 1 Phase 1)
+- ✅ **All 20 have passing tests** (16 total test files with multiple test cases each)
 - ✅ **Phase 5 (Toy/Utility) COMPLETE:** fib, bignum-add, palindrome, shuffle, flatten, collect
+- ✅ **Phase 4 MOSTLY COMPLETE:** primes (1/2)
 - ✅ **Phase 3 (Algorithmic/Puzzle) MOSTLY COMPLETE:** nqueens, mcss, subset-sum, parens, dedup (5/7)
-- 🔜 **Next:** Phase 1 (High Priority) - 8 graph/sorting/text benchmarks OR finish Phase 3 (seam-carve, raytracer)
-- **Remaining:** 20 benchmarks across Phases 1-4
+- ✅ **Phase 1 IN PROGRESS:** tokens (1/8)
+- 🔜 **Next:** Continue Phase 1 (word-count, grep, merge-sort) OR finish Phase 3 (seam-carve, raytracer)
+- **Remaining:** 18 benchmarks across Phases 1-3
