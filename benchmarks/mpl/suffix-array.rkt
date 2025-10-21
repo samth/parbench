@@ -62,7 +62,7 @@
 
   sa)
 
-;; Parallel suffix array using prefix-doubling with parallel sorting
+;; Parallel suffix array using prefix-doubling with thread-pool parallelism
 (define (suffix-array-parallel text workers)
   (define n (string-length text))
   (define text-vec (list->vector (string->list text)))
@@ -75,14 +75,36 @@
   ;; Create suffix array (initially just positions)
   (define sa (for/vector ([i (in-range n)]) i))
 
-  ;; Prefix doubling with parallel operations
+  (define (make-ranges len actual-workers)
+    (cond
+      [(or (zero? len) (zero? actual-workers)) '()]
+      [else
+       (define chunk (max 1 (ceiling (/ len actual-workers))))
+       (for/list ([start (in-range 0 len chunk)])
+         (cons start (min len (+ start chunk))))]))
+
   (call-with-thread-pool workers
     (λ (pool actual-workers)
       (let loop ([k 1])
         (when (< k n)
-          ;; Parallel comparison and sorting
-          ;; For simplicity, we use built-in sort (which may use parallelism)
-          ;; In a full implementation, we'd use parallel radix sort or sample sort
+          ;; compute secondary ranks (rank[i + k]) in parallel
+          (define secondary (make-vector n -1))
+          (define ranges (make-ranges n actual-workers))
+          (for ([t (in-list
+                    (for/list ([rg (in-list ranges)])
+                      (define start (car rg))
+                      (define end (cdr rg))
+                      (thread-pool-submit
+                       pool
+                       (λ ()
+                         (for ([i (in-range start end)])
+                           (vector-set! secondary i
+                                        (if (< (+ i k) n)
+                                            (vector-ref rank (+ i k))
+                                            -1)))))))])
+            (thread-pool-wait t))
+
+          ;; Sort suffixes using the computed key pairs
           (define sa-list (vector->list sa))
           (define sorted-sa
             (sort sa-list
@@ -90,55 +112,49 @@
                     (define ri (vector-ref rank i))
                     (define rj (vector-ref rank j))
                     (if (= ri rj)
-                        (let ([rik (if (< (+ i k) n) (vector-ref rank (+ i k)) -1)]
-                              [rjk (if (< (+ j k) n) (vector-ref rank (+ j k)) -1)])
-                          (< rik rjk))
+                        (< (vector-ref secondary i)
+                           (vector-ref secondary j))
                         (< ri rj)))))
           (set! sa (list->vector sorted-sa))
 
-          ;; Parallel rank update placeholder (collect results for potential future improvements)
-          (define chunk-size (quotient (+ n actual-workers -1) actual-workers))
-          (define rank-threads
-            (for/list ([w (in-range actual-workers)])
-              (define start (* w chunk-size))
-              (define end (min (+ start chunk-size) n))
-              (and (< start end)
-                   (thread-pool-submit
-                    pool
-                    (λ ()
-                      (define local-rank (make-vector n -1))
-                      (for ([idx (in-range (max 1 start) end)])
-                        (define i (vector-ref sa idx))
-                        (define prev-i (vector-ref sa (sub1 idx)))
-                        (define same-pair?
-                          (and (= (vector-ref rank i) (vector-ref rank prev-i))
-                               (= (if (< (+ i k) n) (vector-ref rank (+ i k)) -1)
-                                  (if (< (+ prev-i k) n) (vector-ref rank (+ prev-i k)) -1))))
-                        ;; Placeholder for potential propagation; kept for structural parity
-                        (vector-set! local-rank i
-                                     (if same-pair? -2 idx)))
-                      local-rank)))))
-          (for ([t (in-list rank-threads)])
-            (when t (thread-pool-wait t)))
+          ;; Determine rank boundaries in parallel
+          (define diff (make-vector n 0))
+          (define diff-length (if (> n 0) (sub1 n) 0))
+          (define diff-ranges (make-ranges diff-length actual-workers))
+          (for ([t (in-list
+                    (for/list ([rg (in-list diff-ranges)])
+                      (define start (car rg))
+                      (define end (cdr rg))
+                      (thread-pool-submit
+                       pool
+                       (λ ()
+                         (for ([offset (in-range start end)])
+                           (define idx (add1 offset))
+                           (define curr (vector-ref sa idx))
+                           (define prev (vector-ref sa (sub1 idx)))
+                           (define same-primary (= (vector-ref rank curr)
+                                                   (vector-ref rank prev)))
+                           (define same-secondary (= (vector-ref secondary curr)
+                                                     (vector-ref secondary prev)))
+                           (vector-set! diff idx (if (and same-primary same-secondary) 0 1)))))))])
+            (thread-pool-wait t))
 
-          ;; Collect and merge ranks (sequential merge for correctness)
+          ;; Prefix sum (sequential) to assign new ranks
           (define new-rank (make-vector n 0))
-          (vector-set! new-rank (vector-ref sa 0) 0)
+          (when (> n 0)
+            (vector-set! new-rank (vector-ref sa 0) 0))
+          (define current-rank 0)
           (for ([idx (in-range 1 n)])
-            (define i (vector-ref sa idx))
-            (define prev-i (vector-ref sa (sub1 idx)))
-            (define same-pair?
-              (and (= (vector-ref rank i) (vector-ref rank prev-i))
-                   (= (if (< (+ i k) n) (vector-ref rank (+ i k)) -1)
-                      (if (< (+ prev-i k) n) (vector-ref rank (+ prev-i k)) -1))))
-            (vector-set! new-rank i
-                         (if same-pair?
-                             (vector-ref new-rank prev-i)
-                             idx)))
+            (when (= 1 (vector-ref diff idx))
+              (set! current-rank (add1 current-rank)))
+            (vector-set! new-rank (vector-ref sa idx) current-rank))
 
           (set! rank new-rank)
-          (loop (* k 2)))))
-    #:max (if (zero? n) 1 n))
+
+          ;; Early exit if ranks are unique
+          (unless (= current-rank (sub1 n))
+            (loop (* 2 k))))))
+    #:max (max 1 n))
 
   sa)
 
