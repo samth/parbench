@@ -1,6 +1,7 @@
 #lang racket
 
 (require racket/flonum
+         racket/list
          "../common/cli.rkt"
          "../common/run.rkt"
          "../common/logging.rkt")
@@ -117,75 +118,79 @@
     (set-body-vz! o vz)
     (set-body-x! o (fl+ o1x (fl* +dt+ vx)))
     (set-body-y! o (fl+ o1y (fl* +dt+ vy)))
-    (set-body-z! o (fl+ o1z (fl* +dt+ vz)))))
+        (set-body-z! o (fl+ o1z (fl* +dt+ vz)))))
 
-(define (advance-parallel! system workers)
-  (define n (length system))
-  (define pairs (for*/list ([i (in-range n)] [j (in-range (add1 i) n)])
-                  (cons i j)))
-  (define chunk-size (max 1 (ceiling (/ (length pairs) workers))))
-  (define ranges (for/list ([start (in-range 0 (length pairs) chunk-size)])
-                   (cons start (min (length pairs) (+ start chunk-size)))))
-
-  ;; Parallel force computation
-  (define deltas
-    (if (= workers 1)
-        (for/list ([pr pairs])
-          (define o (list-ref system (car pr)))
-          (define i (list-ref system (cdr pr)))
-          (define dx (fl- (body-x o) (body-x i)))
-          (define dy (fl- (body-y o) (body-y i)))
-          (define dz (fl- (body-z o) (body-z i)))
-          (define dist2 (fl+ (fl+ (fl* dx dx) (fl* dy dy)) (fl* dz dz)))
-          (define mag (fl/ +dt+ (fl* dist2 (flsqrt dist2))))
-          (list (car pr) (cdr pr) (fl* dx mag) (fl* dy mag) (fl* dz mag)))
-        (let ([ch (make-channel)])
-          (for ([rg ranges])
-            (thread
-             (λ ()
-               (define result
-                 (for/list ([idx (in-range (car rg) (cdr rg))])
-                   (define pr (list-ref pairs idx))
-                   (define o (list-ref system (car pr)))
-                   (define i (list-ref system (cdr pr)))
-                   (define dx (fl- (body-x o) (body-x i)))
-                   (define dy (fl- (body-y o) (body-y i)))
-                   (define dz (fl- (body-z o) (body-z i)))
-                   (define dist2 (fl+ (fl+ (fl* dx dx) (fl* dy dy)) (fl* dz dz)))
-                   (define mag (fl/ +dt+ (fl* dist2 (flsqrt dist2))))
-                   (list (car pr) (cdr pr) (fl* dx mag) (fl* dy mag) (fl* dz mag))))
-               (channel-put ch result))))
-          (apply append (for/list ([_ ranges]) (channel-get ch))))))
-
-  ;; Apply forces
-  (for ([delta deltas])
-    (match-define (list oi ii dxmag dymag dzmag) delta)
-    (define o (list-ref system oi))
-    (define i (list-ref system ii))
-    (define om (body-mass o))
-    (define im (body-mass i))
-    (set-body-vx! i (fl+ (body-vx i) (fl* dxmag om)))
-    (set-body-vy! i (fl+ (body-vy i) (fl* dymag om)))
-    (set-body-vz! i (fl+ (body-vz i) (fl* dzmag om)))
-    (set-body-vx! o (fl- (body-vx o) (fl* dxmag im)))
-    (set-body-vy! o (fl- (body-vy o) (fl* dymag im)))
-    (set-body-vz! o (fl- (body-vz o) (fl* dzmag im))))
-
-  ;; Update positions
-  (for ([b system])
+(define (advance-parallel! system workers pool)
+  (define system-vec (list->vector system))
+  (define body-count (vector-length system-vec))
+  (define pair-indexes
+    (for*/vector ([i (in-range body-count)]
+                  [j (in-range (add1 i) body-count)])
+      (cons i j)))
+  (define total-pairs (vector-length pair-indexes))
+  (when (> total-pairs 0)
+    (define chunk-size (max 1 (ceiling (/ total-pairs workers))))
+    (define threads
+      (for/list ([start (in-range 0 total-pairs chunk-size)])
+        (define end (min total-pairs (+ start chunk-size)))
+        (thread #:pool pool #:keep 'results
+                (λ ()
+                  (for/list ([idx (in-range start end)])
+                    (match-define (cons oi ii) (vector-ref pair-indexes idx))
+                    (define o (vector-ref system-vec oi))
+                    (define i (vector-ref system-vec ii))
+                    (define dx (fl- (body-x o) (body-x i)))
+                    (define dy (fl- (body-y o) (body-y i)))
+                    (define dz (fl- (body-z o) (body-z i)))
+                    (define dist2 (fl+ (fl+ (fl* dx dx) (fl* dy dy)) (fl* dz dz)))
+                    (define mag (fl/ +dt+ (fl* dist2 (flsqrt dist2))))
+                    (list oi ii (fl* dx mag) (fl* dy mag) (fl* dz mag)))))))
+    (define deltas
+      (append*
+       (for/list ([t (in-list threads)])
+         (call-with-values
+          (λ () (thread-wait t))
+          (λ values
+            (cond
+              [(null? values) '()]
+              [(null? (cdr values)) (car values)]
+              [else values]))))))
+    (for ([delta deltas])
+      (match-define (list oi ii dxmag dymag dzmag) delta)
+      (define o (vector-ref system-vec oi))
+      (define i (vector-ref system-vec ii))
+      (define om (body-mass o))
+      (define im (body-mass i))
+      (set-body-vx! i (fl+ (body-vx i) (fl* dxmag om)))
+      (set-body-vy! i (fl+ (body-vy i) (fl* dymag om)))
+      (set-body-vz! i (fl+ (body-vz i) (fl* dzmag om)))
+      (set-body-vx! o (fl- (body-vx o) (fl* dxmag im)))
+      (set-body-vy! o (fl- (body-vy o) (fl* dymag im)))
+      (set-body-vz! o (fl- (body-vz o) (fl* dzmag im)))))
+  (for ([idx (in-range (vector-length system-vec))])
+    (define b (vector-ref system-vec idx))
     (set-body-x! b (fl+ (body-x b) (fl* +dt+ (body-vx b))))
     (set-body-y! b (fl+ (body-y b) (fl* +dt+ (body-vy b))))
     (set-body-z! b (fl+ (body-z b) (fl* +dt+ (body-vz b))))))
 
 (define (nbody-simulation n #:workers [workers 1])
   (define system (list (make-sun) (make-jupiter) (make-saturn) (make-uranus) (make-neptune)))
-  (define advance! (if (= workers 1) advance-sequential! (λ (s) (advance-parallel! s workers))))
-  (offset-momentum! system)
-  (define e1 (energy system))
-  (for ([_ (in-range n)])
-    (advance! system))
-  (define e2 (energy system))
-  (list e1 e2))
+  (define sequential? (<= workers 1))
+  (define pool (and (not sequential?) (make-parallel-thread-pool workers)))
+  (define advance! (if sequential?
+                       advance-sequential!
+                       (λ (s) (advance-parallel! s workers pool))))
+  (dynamic-wind
+    (λ () (void))
+    (λ ()
+      (offset-momentum! system)
+      (define e1 (energy system))
+      (for ([_ (in-range n)])
+        (advance! system))
+      (define e2 (energy system))
+      (list e1 e2))
+    (λ ()
+      (when pool (parallel-thread-pool-close pool)))))
 
 (module+ main
   (define n 1000)

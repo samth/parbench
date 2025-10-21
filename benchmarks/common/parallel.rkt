@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require racket/fixnum
+         racket/future
          (for-syntax racket/base))
 
 (provide for/parallel
@@ -14,6 +15,8 @@
 
 ;; Submit a thunk to a thread pool, keeping the result for retrieval.
 (define (thread-pool-submit pool thunk)
+  (unless (or (not pool) (parallel-thread-pool? pool))
+    (error 'thread-pool-submit "invalid pool: ~a" pool))
   (thread #:pool pool #:keep 'results thunk))
 
 ;; Wait for a thread spawned via thread-pool-submit and return all produced values.
@@ -40,31 +43,31 @@
     (thread-pool-wait t)))
 
 ;; Parallel for loop implemented purely with thread pools.
-(define-syntax for/parallel
-  (syntax-rules ()
+(define-syntax (for/parallel stx)
+  (syntax-case stx ()
     [(_ workers ([i N]) body ...)
-     (let* ([total N]
-            [worker-count (max 1 (min workers (if (exact-nonnegative-integer? total)
-                                                 total
-                                                 workers)))]
-            [pool 'parallel-pool]
-            [stride (if (zero? worker-count)
-                        total
-                        (fxquotient total worker-count))])
-       (dynamic-wind
-         (λ () (void))
-         (λ ()
-           (define threads
-             (for/list ([n (in-range worker-count)])
-               (define start (fx* n stride))
-               (define end (fxmin total (fx* (fx+ n 1) stride)))
-               (thread-pool-submit
-                pool
-                (λ ()
-                  (for ([i (in-range start end)])
-                    body ...)))))
-           (for ([t (in-list threads)]) (thread-pool-wait t)))
-         (λ () (void))))]))
+     #'(let* ((total N)
+              (integer-total? (exact-nonnegative-integer? total))
+              (max-tasks (and integer-total? total))
+              (worker-count (max 1 (min workers (if integer-total? total workers)))))
+        (unless integer-total?
+          (error 'for/parallel "expected exact nonnegative integer length, got ~a" total))
+        (call-with-thread-pool worker-count
+          (λ (pool actual-workers)
+            (define total+ (max 1 total))
+            (define effective-workers (max 1 (min actual-workers total+)))
+            (define chunk-size (max 1 (ceiling (/ total+ effective-workers))))
+            (define threads
+              (for/list ([start (in-range 0 total chunk-size)])
+                (let ((end (min total (+ start chunk-size))))
+                  (thread-pool-submit
+                   pool
+                   (λ ()
+                     (for ([i (in-range start end)])
+                       body ...))))))
+            (for ([t (in-list threads)])
+              (thread-pool-wait t)))
+          #:max max-tasks))]))
 ;; Create a temporary thread pool, ensure it is closed, and run proc with it.
 (define (call-with-thread-pool workers proc #:max [max-tasks #f])
   (define target (max 1 workers))
@@ -72,11 +75,12 @@
                   [(and max-tasks max-tasks)
                    (max 1 (min target max-tasks))]
                   [else target]))
-  (define pool 'parallel-pool)
+  (define pool (make-parallel-thread-pool count))
   (dynamic-wind
     (λ () (void))
-    (λ () (proc pool count))
-    (λ () (void))))
+    (λ ()
+      (proc pool count))
+    (λ () (parallel-thread-pool-close pool))))
 
 ;; Track the currently requested parallel strategy for benchmarks.
 (define current-parallel-strategy (make-parameter 'threads))
