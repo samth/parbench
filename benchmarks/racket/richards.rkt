@@ -382,8 +382,11 @@
                (λ () (run-richards-sequential #:iterations count #:verify? #f))))))
          #:max (ceiling (/ iterations chunk))))
      (define-values (q h)
-       (sum-results (for/list ([values (in-list tasks)])
-                      (first values))))
+       (sum-results
+        (for/list ([values (in-list tasks)])
+          (cond
+            [(and (list? values) (pair? values)) (first values)]
+            [else values]))))
      (define result (richards-result q h))
      (when verify?
        (verify-result result iterations))
@@ -395,6 +398,7 @@
   (define iterations 20)
   (define worker-counts '(1 2 4 8))
   (define log-path #f)
+  (define repeat-count 1)
 
   (void
    (command-line
@@ -404,6 +408,8 @@
     (set! iterations (parse-positive-integer arg 'richards))]
    [("--workers") arg "Comma-separated worker counts for the parallel sweep."
     (set! worker-counts (parse-positive-list arg 'richards))]
+   [("--repeat") arg "Benchmark repetitions per variant."
+    (set! repeat-count (parse-positive-integer arg 'richards))]
    [("--log") arg "Optional path for S-expression benchmark log."
     (set! log-path arg)]))
 
@@ -415,7 +421,7 @@
    (λ () (run-richards-sequential #:iterations iterations))
    #:name 'richards
    #:variant 'sequential
-   #:repeat 1
+   #:repeat repeat-count
    #:log-writer writer
    #:params params-base
    #:metadata metadata
@@ -426,7 +432,7 @@
      (λ () (run-richards-parallel #:iterations iterations #:workers w))
      #:name 'richards
      #:variant 'parallel
-     #:repeat 1
+     #:repeat repeat-count
      #:log-writer writer
      #:params (append params-base (list (list 'workers w)))
      #:metadata metadata

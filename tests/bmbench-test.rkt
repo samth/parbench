@@ -1,7 +1,6 @@
 #lang racket
 
 (require rackunit
-         racket/future
          "../benchmarks/racket/bmbench.rkt")
 
 (module+ test

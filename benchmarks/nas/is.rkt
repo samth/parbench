@@ -136,7 +136,7 @@
       (define chunk-size (quotient (+ n actual-workers -1) actual-workers))
 
       ;; Step 1: Parallel local bucket counting
-      (define local-counts-list
+      (define raw-local-counts
         (thread-pool-wait/collect
          (for/list ([w (in-range actual-workers)])
            (define start (* w chunk-size))
@@ -153,6 +153,13 @@
                 (vector-set! local-counts bucket-id
                              (fx+ 1 (vector-ref local-counts bucket-id))))
               local-counts)))))
+      (define local-counts-list
+        (for/list ([result (in-list raw-local-counts)]
+                   #:when (and result
+                               (not (and (list? result) (null? result)))))
+          (cond
+            [(and (list? result) (pair? result)) (car result)]
+            [else result])))
 
       ;; Step 2: Merge local counts to get global bucket counts
       (define bucket-counts (make-vector num-buckets 0))

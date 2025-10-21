@@ -4,7 +4,8 @@
          racket/path
          racket/file
          racket/system
-         "common/cli.rkt")
+         "common/cli.rkt"
+         "common/parallel.rkt")
 
 (provide run-suite)
 
@@ -116,10 +117,22 @@
   ;; Run benchmarks
   (define results
     (if parallel?
-        ;; Parallel execution (experimental)
-        (for/list ([bench final-benchmarks])
-          (match-define (list name path args) bench)
-          (thread (λ () (run-benchmark name path args log-dir benchmarks-dir))))
+        ;; Parallel execution using thread pool
+        (call-with-thread-pool (processor-count)
+          (λ (pool actual-workers)
+            (define tasks
+              (for/list ([bench final-benchmarks])
+                (match-define (list name path args) bench)
+                (thread-pool-submit
+                 pool
+                 (λ () (run-benchmark name path args log-dir benchmarks-dir)))))
+            (define raw-results (thread-pool-wait/collect tasks))
+            (for/list ([vals (in-list raw-results)])
+              (cond
+                [(null? vals) 0]
+                [(null? (cdr vals)) (car vals)]
+                [else (car vals)])))
+          #:max (max 1 (length final-benchmarks)))
         ;; Sequential execution
         (for/list ([bench final-benchmarks])
           (match-define (list name path args) bench)

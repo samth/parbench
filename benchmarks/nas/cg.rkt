@@ -455,7 +455,7 @@
      (set! workers (parse-positive-integer arg 'nas-cg))]
     [("--repeat") arg "Benchmark repetitions"
      (set! repeat (parse-positive-integer arg 'nas-cg))]
-    [("--strategy") arg "Parallel strategy: threads or futures"
+    [("--strategy") arg "Parallel strategy (threads only)"
      (set! strategy (string->symbol (string-downcase arg)))]
     [("--niter") arg "Override iteration count (testing)"
      (set! niter-override (string->number arg))]

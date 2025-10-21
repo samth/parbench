@@ -1,7 +1,6 @@
 #lang racket/base
 
-(require racket/future
-         racket/fixnum
+(require racket/fixnum
          (for-syntax racket/base))
 
 (provide for/parallel
@@ -9,7 +8,9 @@
          thread-pool-submit
          thread-pool-wait
          thread-pool-wait/collect
-         thread-pool-for-each)
+         thread-pool-for-each
+         current-parallel-strategy
+         set-parallel-strategy!)
 
 ;; Submit a thunk to a thread pool, keeping the result for retrieval.
 (define (thread-pool-submit pool thunk)
@@ -24,7 +25,11 @@
   (for/list ([t (in-list threads)])
     (call-with-values
      (λ () (thread-pool-wait t))
-     list)))
+     (λ results
+       (cond
+         [(null? results) (void)]
+         [(null? (cdr results)) (car results)]
+         [else results])))))
 
 ;; Apply a thunk-generating procedure across indices using a shared pool.
 (define (thread-pool-for-each pool count proc)
@@ -72,3 +77,21 @@
     (λ () (void))
     (λ () (proc pool count))
     (λ () (void))))
+
+;; Track the currently requested parallel strategy for benchmarks.
+(define current-parallel-strategy (make-parameter 'threads))
+
+(define supported-strategies '(threads))
+
+(define (set-parallel-strategy! sym)
+  (define normalized
+    (cond
+      [(symbol? sym) sym]
+      [(string? sym) (string->symbol (string-downcase sym))]
+      [else (error 'set-parallel-strategy! "expected strategy symbol or string, got ~a" sym)]))
+  (unless (member normalized supported-strategies)
+    (error 'set-parallel-strategy!
+           "unknown strategy ~a (supported strategies: ~a)"
+           normalized
+           supported-strategies))
+  (current-parallel-strategy normalized))
