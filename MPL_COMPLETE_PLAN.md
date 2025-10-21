@@ -1,20 +1,30 @@
 # MPL Benchmark Suite - Complete Implementation Plan (ACCURATE)
 
+## 🎯 Current Status (2025-10-21)
+
+**13/38 MPL benchmarks implemented (34.2%)** | **Phase 5 COMPLETE ✅**
+
+- ✅ **7 Core benchmarks:** bfs, convex-hull, histogram, integer-sort, mis, msf, suffix-array
+- ✅ **6 Phase 5 (Toy/Utility):** fib, bignum-add, palindrome, shuffle, flatten, collect
+- 🔜 **Next:** Phase 1 (High Priority) - 8 graph/sorting/text benchmarks
+- **Remaining:** 25 benchmarks across Phases 1-4
+
 ## Executive Summary
 
 This document provides an **accurate** plan for implementing remaining benchmarks from the MPL (MaPLe) Parallel ML benchmark suite, based on the actual contents of https://github.com/MPLLang/parallel-ml-bench/tree/main/mpl/bench.
 
 **Key Findings:**
 - **MPL has 84 benchmarks** (not ~30 as initially thought)
-- **7 already implemented** in this repository
+- **13 already implemented** in this repository (7 core + 6 Phase 5)
 - **Many are variants** (optimized versions, pure versions, different implementations)
 - **Many are test/research benchmarks** (entanglement studies, fragmentation tests)
 - **Core unique benchmarks:** ~30-35 distinct problems
 
 ## Complete MPL Benchmark Inventory
 
-### Already Implemented (7 benchmarks)
+### Already Implemented (13 benchmarks)
 
+#### Core MPL Benchmarks (7)
 1. ✅ **bfs** - Breadth-first search (matches MPL's `bfs`)
 2. ✅ **convex-hull** - 2D convex hull (matches MPL's `quickhull` or `pure-quickhull`)
 3. ✅ **histogram** - Histogram counting (no direct MPL match, but similar to PBBS)
@@ -22,6 +32,14 @@ This document provides an **accurate** plan for implementing remaining benchmark
 5. ✅ **mis** - Maximal independent set (matches MPL's `max-indep-set`)
 6. ✅ **msf** - Minimum spanning forest (no direct MPL match, PBBS-based)
 7. ✅ **suffix-array** - Suffix array construction (matches MPL's `suffix-array`)
+
+#### Phase 5: Toy/Utility Benchmarks (6) - COMPLETED
+8. ✅ **fib** - Naive recursive parallel Fibonacci
+9. ✅ **bignum-add** - Parallel addition of large integers
+10. ✅ **palindrome** - Palindrome checking
+11. ✅ **shuffle** - Parallel random shuffle
+12. ✅ **flatten** - Flatten nested sequences
+13. ✅ **collect** - Collect/filter operations
 
 ### All 84 MPL Benchmarks (Categorized)
 
@@ -297,41 +315,47 @@ Many MPL benchmarks are:
 
 These are simple benchmarks useful for testing infrastructure, debugging, and educational purposes.
 
-**Fibonacci** (`fib.rkt`)
+**Fibonacci** (`fib.rkt`) ✅
 - **MPL:** `fib`
 - **Description:** Naive recursive parallel Fibonacci
 - **Value:** Trivial parallelism test, good for debugging scheduler
 - **Estimated effort:** 1 day
+- **Status:** COMPLETED
 
-**Big Number Addition** (`bignum-add.rkt`)
+**Big Number Addition** (`bignum-add.rkt`) ✅
 - **MPL:** `bignum-add`
 - **Description:** Parallel addition of large integers
 - **Value:** Tests chunking and carry propagation
 - **Estimated effort:** 2 days
+- **Status:** COMPLETED
 
-**Palindrome** (`palindrome.rkt`)
+**Palindrome** (`palindrome.rkt`) ✅
 - **MPL:** `palindrome`
 - **Description:** Palindrome checking
 - **Value:** Simple string algorithm
 - **Estimated effort:** 1 day
+- **Status:** COMPLETED
 
-**Shuffle** (`shuffle.rkt`)
+**Shuffle** (`shuffle.rkt`) ✅
 - **MPL:** `shuf`
 - **Description:** Parallel random shuffle
 - **Value:** Tests randomization and permutation
 - **Estimated effort:** 1-2 days
+- **Status:** COMPLETED
 
-**Flatten** (`flatten.rkt`)
+**Flatten** (`flatten.rkt`) ✅
 - **MPL:** `flatten`
 - **Description:** Flatten nested sequences
 - **Value:** Tests sequence operations
 - **Estimated effort:** 1 day
+- **Status:** COMPLETED
 
-**Collect** (`collect.rkt`)
+**Collect** (`collect.rkt`) ✅
 - **MPL:** `collect`
 - **Description:** Collect/filter operations
 - **Value:** Tests parallel filtering
 - **Estimated effort:** 1 day
+- **Status:** COMPLETED
 
 ## Benchmarks NOT to Port
 
@@ -379,20 +403,22 @@ These are simple benchmarks useful for testing infrastructure, debugging, and ed
 **Low Priority (Phase 4): 2 benchmarks**
 - primes, interval-tree
 
-**Very Low Priority (Phase 5): 6 benchmarks**
-- fib, bignum-add, palindrome, shuffle, flatten, collect
+**Very Low Priority (Phase 5): 6 benchmarks** ✅ **COMPLETED**
+- fib ✅, bignum-add ✅, palindrome ✅, shuffle ✅, flatten ✅, collect ✅
 
 **Total to port: 31 benchmarks** (from 84 MPL benchmarks, 7 already done)
+**Phase 5 COMPLETED: 6/6 benchmarks implemented**
 
 ### Implementation Timeline
 
-**Phase 1 (High):** 8 benchmarks, ~6-8 weeks
-**Phase 2 (Medium-High):** 8 benchmarks, ~7-9 weeks
-**Phase 3 (Medium):** 7 benchmarks, ~6-7 weeks
-**Phase 4 (Low):** 2 benchmarks, ~2-3 weeks
-**Phase 5 (Very Low):** 6 benchmarks, ~1-2 weeks
+**Phase 1 (High):** 8 benchmarks, ~6-8 weeks - NOT STARTED
+**Phase 2 (Medium-High):** 8 benchmarks, ~7-9 weeks - NOT STARTED
+**Phase 3 (Medium):** 7 benchmarks, ~6-7 weeks - NOT STARTED
+**Phase 4 (Low):** 2 benchmarks, ~2-3 weeks - NOT STARTED
+**Phase 5 (Very Low):** 6 benchmarks, ~1-2 weeks - ✅ **COMPLETED**
 
 **Total estimated effort:** ~22-29 weeks (5.5-7.5 months) for all 31 benchmarks
+**Progress:** 6/31 benchmarks completed (19.4%)
 
 ## Implementation Guidelines
 
@@ -440,15 +466,15 @@ All in `benchmarks/mpl/`:
 ```
 benchmarks/mpl/
   README.md                # Update with new benchmarks
-  # Existing (7)
-  bfs.rkt
-  convex-hull.rkt
-  histogram.rkt
-  integer-sort.rkt
-  mis.rkt
-  msf.rkt
-  suffix-array.rkt
-  # Phase 1 - High Priority (8)
+  # Existing (7) - ✅ ALL COMPLETED
+  bfs.rkt ✅
+  convex-hull.rkt ✅
+  histogram.rkt ✅
+  integer-sort.rkt ✅
+  mis.rkt ✅
+  msf.rkt ✅
+  suffix-array.rkt ✅
+  # Phase 1 - High Priority (8) - NOT STARTED
   connectivity.rkt
   triangle-count.rkt
   centrality.rkt
@@ -457,7 +483,7 @@ benchmarks/mpl/
   tokens.rkt
   word-count.rkt
   grep.rkt
-  # Phase 2 - Geometry & Numerical (8)
+  # Phase 2 - Geometry & Numerical (8) - NOT STARTED
   delaunay.rkt
   knn.rkt
   skyline.rkt
@@ -466,7 +492,7 @@ benchmarks/mpl/
   sparse-mxv.rkt
   line-fit.rkt
   integrate.rkt
-  # Phase 3 - Specialized (7)
+  # Phase 3 - Specialized (7) - NOT STARTED
   seam-carve.rkt
   raytracer.rkt
   nqueens.rkt
@@ -474,16 +500,16 @@ benchmarks/mpl/
   subset-sum.rkt
   parens.rkt
   dedup.rkt
-  # Phase 4 - Primes & Advanced (2)
+  # Phase 4 - Primes & Advanced (2) - NOT STARTED
   primes.rkt
   interval-tree.rkt
-  # Phase 5 - Toy/Utility (6)
-  fib.rkt
-  bignum-add.rkt
-  palindrome.rkt
-  shuffle.rkt
-  flatten.rkt
-  collect.rkt
+  # Phase 5 - Toy/Utility (6) - ✅ ALL COMPLETED
+  fib.rkt ✅
+  bignum-add.rkt ✅
+  palindrome.rkt ✅
+  shuffle.rkt ✅
+  flatten.rkt ✅
+  collect.rkt ✅
 ```
 
 ## Coordination with Other Plans
@@ -508,18 +534,18 @@ benchmarks/mpl/
 ## Success Metrics
 
 **Quantitative:**
-- 31 new MPL benchmarks implemented
-- Total MPL suite: 38 benchmarks (7 existing + 31 new)
-- 100% test coverage
+- 31 new MPL benchmarks to implement (6/31 completed = 19.4%)
+- Total MPL suite target: 38 benchmarks (13 implemented: 7 core + 6 Phase 5)
+- 100% test coverage (✅ all 13 implemented benchmarks have tests)
 - All benchmarks integrated with suite runner
-- Includes toy/utility benchmarks for testing infrastructure
+- ✅ Phase 5 complete: toy/utility benchmarks for testing infrastructure (6/6)
 
 **Qualitative:**
-- Comprehensive coverage of MPL's diverse algorithm domains
-- Clear attribution to MPL
-- Consistent with existing architecture
+- Comprehensive coverage of MPL's diverse algorithm domains (in progress)
+- ✅ Clear attribution to MPL
+- ✅ Consistent with existing architecture
 - Valuable for Racket parallel performance evaluation
-- Complete range from complex (delaunay, raytracer) to simple (fib, palindrome)
+- ✅ Complete range from complex (convex-hull, msf) to simple (fib, palindrome)
 
 ## References
 
@@ -532,8 +558,17 @@ benchmarks/mpl/
 ## Next Steps
 
 1. ✅ **VERIFIED: Accessed actual MPL repository** - Found 84 benchmarks
-2. **Begin Phase 1** with connectivity and triangle-count as pilots
-3. **Update benchmarks/mpl/README.md** to list new benchmarks as added
-4. **Coordinate with Sandmark plan** for dense-matmul
-5. **Create test infrastructure** for new algorithm categories
-6. **Retire MPL_REMAINING_PLAN.md** (replaced by this accurate plan)
+2. ✅ **Phase 5 COMPLETED** - All 6 toy/utility benchmarks implemented with tests
+3. **Begin Phase 1** with connectivity and triangle-count as pilots
+4. **Update benchmarks/mpl/README.md** to list new benchmarks as added
+5. **Coordinate with Sandmark plan** for dense-matmul
+6. **Create test infrastructure** for new algorithm categories
+7. **Retire MPL_REMAINING_PLAN.md** (replaced by this accurate plan)
+
+## Current Status (2025-10-21)
+
+- ✅ **13 MPL benchmarks implemented** (7 core + 6 Phase 5)
+- ✅ **All 13 have passing tests**
+- ✅ **Phase 5 (Toy/Utility) COMPLETE:** fib, bignum-add, palindrome, shuffle, flatten, collect
+- 🔜 **Next:** Phase 1 (High Priority) - 8 graph/sorting/text benchmarks
+- **Remaining:** 25 benchmarks across Phases 1-4
