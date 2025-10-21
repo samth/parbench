@@ -17,6 +17,118 @@ All benchmarks share a common infrastructure:
 - Metadata capture (Racket version, timestamp, system info)
 - RackUnit test coverage validating sequential vs. parallel correctness
 
+## Installation
+
+### Prerequisites
+
+- **Racket 8.0 or later** (Racket 8.10+ recommended for best parallel performance)
+- **Git** for cloning the repository
+- **4+ CPU cores** recommended for meaningful parallel benchmarks
+
+### Step 1: Install Racket
+
+If you don't have Racket installed, download it from the official website:
+
+**Option A: Download from racket-lang.org**
+```bash
+# Visit https://racket-lang.org/download/
+# Download the installer for your platform (Linux, macOS, Windows)
+# Follow the installation wizard
+```
+
+**Option B: Package Manager (Linux/macOS)**
+```bash
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install racket
+
+# macOS (Homebrew)
+brew install --cask racket
+
+# Arch Linux
+sudo pacman -S racket
+```
+
+Verify your Racket installation:
+```bash
+racket --version
+# Should output: Welcome to Racket v8.x or later
+```
+
+### Step 2: Clone the Repository
+
+```bash
+git clone https://github.com/your-username/parbench.git
+cd parbench
+```
+
+### Step 3: Verify Installation
+
+Run the test suite to ensure everything is working correctly:
+
+```bash
+# Run all tests
+raco test tests/
+
+# Expected output: All tests should pass
+```
+
+Run a quick smoke test benchmark:
+
+```bash
+# Test a simple benchmark (should complete in < 5 seconds)
+racket benchmarks/racket/bmbench.rkt --sizes 1000 --workers 2 --repeat 1
+
+# Expected output: S-expression with benchmark results
+```
+
+### Step 4: Create Log Directory (Optional)
+
+```bash
+# Create directory for benchmark logs
+mkdir -p logs
+
+# Run a benchmark with logging
+racket benchmarks/racket/bmbench.rkt --sizes 10000 --workers 4 --log logs/test.sexp
+
+# Verify the log was created
+cat logs/test.sexp
+```
+
+### Optional Dependencies
+
+**For HTML Dashboard Visualization:**
+The visualization tools use the `plot` library, which is included in the standard Racket distribution. No additional installation is required.
+
+**For NAS Benchmark Development (Advanced):**
+If you plan to compare against the original NAS Parallel Benchmarks (Fortran):
+```bash
+# Ubuntu/Debian
+sudo apt-get install gfortran
+
+# macOS (Homebrew)
+brew install gcc
+```
+
+### Troubleshooting
+
+**Issue:** `raco: command not found`
+- **Solution:** Ensure Racket's `bin` directory is in your PATH. Add to `.bashrc` or `.zshrc`:
+  ```bash
+  export PATH="/path/to/racket/bin:$PATH"
+  ```
+
+**Issue:** Tests fail with "No such module" errors
+- **Solution:** Ensure you're running commands from the repository root directory (`parbench/`)
+
+**Issue:** Benchmarks run slowly or don't show speedup
+- **Solution:** Increase problem sizes and ensure sufficient CPU cores:
+  ```bash
+  # Check available cores
+  nproc  # Linux
+  sysctl -n hw.ncpu  # macOS
+  ```
+
 ## Quick Start
 
 ### Running Individual Benchmarks
@@ -119,12 +231,6 @@ This is an active development project with most core features complete:
 - ⏳ Additional NAS kernels (MG, FT) and MPL benchmarks (stretch goals)
 
 See [PLAN.md](PLAN.md) for detailed roadmap and progress tracking.
-
-## Requirements
-
-- Racket 8.0 or later
-- For plotting: `plot` library (included in standard Racket distribution)
-- For NAS benchmarks: Fortran compiler (optional, for building NAS kernels)
 
 ## Contributing
 
