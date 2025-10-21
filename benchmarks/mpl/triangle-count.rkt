@@ -74,47 +74,42 @@
 (define (triangle-count-parallel graph workers)
   (define n (vector-length graph))
 
-  ;; Divide vertices among workers
-  (define chunk-size (quotient n workers))
+  (define (count-range start end)
+    (define local-count 0)
+    (for ([u (in-range start end)])
+      (define neighbors-u (vector-ref graph u))
+      (for ([v (in-list neighbors-u)]
+            #:when (> v u))
+        (define neighbors-v (vector-ref graph v))
+        (let loop ([list-u neighbors-u]
+                   [list-v neighbors-v])
+          (cond
+            [(or (null? list-u) (null? list-v)) (void)]
+            [else
+             (define elem-u (car list-u))
+             (define elem-v (car list-v))
+             (cond
+               [(= elem-u elem-v)
+                (when (> elem-u v)
+                  (set! local-count (add1 local-count)))
+                (loop (cdr list-u) (cdr list-v))]
+               [(< elem-u elem-v)
+                (loop (cdr list-u) list-v)]
+               [else
+                (loop list-u (cdr list-v))])]))))
+    local-count)
 
-  (define futures
-    (for/list ([w (in-range workers)])
-      (future
-       (lambda ()
-         (define start (* w chunk-size))
-         (define end (if (= w (sub1 workers))
-                         n
-                         (* (add1 w) chunk-size)))
-         (define local-count 0)
-
-         ;; Process vertices [start, end)
-         (for ([u (in-range start end)])
-           (define neighbors-u (vector-ref graph u))
-           (for ([v (in-list neighbors-u)]
-                 #:when (> v u))
-             (define neighbors-v (vector-ref graph v))
-             (let loop ([list-u neighbors-u]
-                        [list-v neighbors-v])
-               (cond
-                 [(or (null? list-u) (null? list-v)) (void)]
-                 [else
-                  (define elem-u (car list-u))
-                  (define elem-v (car list-v))
-                  (cond
-                    [(= elem-u elem-v)
-                     (when (> elem-u v)
-                       (set! local-count (add1 local-count)))
-                     (loop (cdr list-u) (cdr list-v))]
-                    [(< elem-u elem-v)
-                     (loop (cdr list-u) list-v)]
-                    [else
-                     (loop list-u (cdr list-v))])]))))
-
-         local-count))))
-
-  ;; Sum results from all workers
-  (for/sum ([f (in-list futures)])
-    (touch f)))
+  (if (<= workers 1)
+      (triangle-count-sequential graph)
+      (call-with-thread-pool workers
+        (λ (pool actual-workers)
+          (define chunk-size (max 1 (ceiling (/ n (max 1 (min actual-workers n))))))
+          (define tasks
+            (for/list ([start (in-range 0 n chunk-size)])
+              (define end (min n (+ start chunk-size)))
+              (thread-pool-submit pool (λ () (count-range start end)))))
+          (apply + (thread-pool-wait/collect tasks)))
+        #:max n)))
 
 (module+ main
   (define n 1000)

@@ -113,15 +113,18 @@
     (for/list ([start (in-range (add1 sqrt-n) (add1 n) block-size)])
       (cons start (min (add1 n) (+ start block-size)))))
 
-  ;; Process segments in parallel
-  (define futures
-    (for/list ([seg (in-list segments)])
-      (future (lambda () (sieve-segment (car seg) (cdr seg))))))
-
-  ;; Sum up results
   (+ (length base-primes)
-     (for/sum ([f (in-list futures)])
-       (touch f))))
+     (if (<= workers 1)
+         (for/sum ([seg (in-list segments)])
+           (sieve-segment (car seg) (cdr seg)))
+         (call-with-thread-pool workers
+           (λ (pool actual-workers)
+             (define tasks
+               (for/list ([seg (in-list segments)])
+                 (thread-pool-submit pool
+                                     (λ () (sieve-segment (car seg) (cdr seg))))))
+             (apply + (thread-pool-wait/collect tasks)))
+           #:max (length segments)))))
 
 (module+ main
   (define n 10000000)

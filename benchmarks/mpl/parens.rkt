@@ -51,30 +51,33 @@
 ;; Parallel parentheses matching using reduction
 (define (parens-parallel data workers)
   (define n (vector-length data))
-  (define chunk-size (quotient n workers))
+  (define (process-range start end)
+    (for/fold ([counts (cons 0 0)])
+              ([i (in-range start end)])
+      (define char (vector-ref data i))
+      (define elem (if (char=? char #\()
+                       (cons 1 0)
+                       (cons 0 1)))
+      (combine-paren-counts counts elem)))
 
-  ;; Each worker processes a chunk and returns (left-count, right-count)
-  (define futures
-    (for/list ([w (in-range workers)])
-      (future
-       (lambda ()
-         (define start (* w chunk-size))
-         (define end (if (= w (sub1 workers))
-                         n
-                         (* (add1 w) chunk-size)))
-         (for/fold ([counts (cons 0 0)])
-                   ([i (in-range start end)])
-           (define char (vector-ref data i))
-           (define elem (if (char=? char #\()
-                            (cons 1 0)
-                            (cons 0 1)))
-           (combine-paren-counts counts elem))))))
+  (define partial-results
+    (if (<= workers 1)
+        (list (process-range 0 n))
+        (call-with-thread-pool workers
+          (λ (pool actual-workers)
+            (define effective-workers (max 1 (min actual-workers n)))
+            (define chunk-size (max 1 (ceiling (/ n effective-workers))))
+            (define tasks
+              (for/list ([start (in-range 0 n chunk-size)])
+                (define end (min n (+ start chunk-size)))
+                (thread-pool-submit pool (λ () (process-range start end)))))
+            (thread-pool-wait/collect tasks))
+          #:max (ceiling (/ n (max 1 (min workers n)))))))
 
-  ;; Reduce the results from all workers
   (define final-result
     (for/fold ([acc (cons 0 0)])
-              ([f futures])
-      (combine-paren-counts acc (touch f))))
+              ([partial (in-list partial-results)])
+      (combine-paren-counts acc partial)))
 
   ;; Balanced if both counts are 0
   (and (= (car final-result) 0)

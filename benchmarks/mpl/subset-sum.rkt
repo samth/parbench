@@ -62,21 +62,28 @@
   (define (try-parallel-splits)
     ;; Try taking or not taking first few elements in parallel
     (define splits (min 4 n))  ; Try up to 4 initial splits
-    (define futures
-      (for/list ([mask (in-range (expt 2 splits))])
-        (future
-         (lambda ()
-           (define initial-sum
-             (for/sum ([i (in-range splits)])
-               (if (bitwise-bit-set? mask i)
-                   (vector-ref bag i)
-                   0)))
-           (if (= initial-sum goal)
-               #t
-               (can-sum-sequential bag splits initial-sum))))))
+    (define task-count (expt 2 splits))
+    (define (evaluate-mask mask)
+      (define initial-sum
+        (for/sum ([i (in-range splits)])
+          (if (bitwise-bit-set? mask i)
+              (vector-ref bag i)
+              0)))
+      (if (= initial-sum goal)
+          #t
+          (can-sum-sequential bag splits initial-sum)))
 
-    (for/or ([f futures])
-      (touch f)))
+    (if (<= workers 1)
+        (for/or ([mask (in-range task-count)])
+          (evaluate-mask mask))
+        (call-with-thread-pool workers
+          (λ (pool actual-workers)
+            (define tasks
+              (for/list ([mask (in-range task-count)])
+                (thread-pool-submit pool (λ () (evaluate-mask mask)))))
+            (for/or ([task (in-list tasks)])
+              (thread-pool-wait task)))
+          #:max task-count)))
 
   (if (< n 4)
       (subset-sum-sequential bag goal)

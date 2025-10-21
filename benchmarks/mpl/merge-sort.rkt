@@ -5,7 +5,7 @@
 ;; Adapted for Racket parallel benchmarking
 ;;
 ;; Merge Sort: Classic divide-and-conquer sorting algorithm.
-;; Parallel version uses futures to sort halves concurrently.
+;; Parallel version uses a thread pool to sort halves concurrently.
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
@@ -68,32 +68,33 @@
 (define (merge-sort-parallel vec workers [threshold 1000])
   (define n (vector-length vec))
 
-  (define (parallel-merge-sort v depth)
-    (define len (vector-length v))
-    (cond
-      [(<= len threshold)
-       ;; Below threshold, use sequential
-       (merge-sort-sequential v)]
-      [(<= len 1) v]
-      [else
-       (define mid (quotient len 2))
-       (define left-vec (vector-copy v 0 mid))
-       (define right-vec (vector-copy v mid))
+  (define (sorted-subvector v)
+    (merge-sort-sequential v))
 
-       ;; Only parallelize at top levels
-       (if (< depth 3)
-           ;; Parallel: sort halves in parallel
-           (let ([left-future (future (lambda () (parallel-merge-sort left-vec (add1 depth))))]
-                 [right-future (future (lambda () (parallel-merge-sort right-vec (add1 depth))))])
-             (define left-sorted (touch left-future))
-             (define right-sorted (touch right-future))
-             (merge left-sorted right-sorted))
-           ;; Sequential: too deep, avoid overhead
-           (let ([left-sorted (parallel-merge-sort left-vec (add1 depth))]
-                 [right-sorted (parallel-merge-sort right-vec (add1 depth))])
-             (merge left-sorted right-sorted)))]))
-
-  (parallel-merge-sort vec 0))
+  (if (<= workers 1)
+      (merge-sort-sequential vec)
+      (call-with-thread-pool workers
+        (λ (pool actual-workers)
+          (define (parallel-merge-sort v depth)
+            (define len (vector-length v))
+            (cond
+              [(<= len threshold) (sorted-subvector v)]
+              [(<= len 1) v]
+              [else
+               (define mid (quotient len 2))
+               (define left-vec (vector-copy v 0 mid))
+               (define right-vec (vector-copy v mid))
+               (if (< depth 3)
+                   (let ([left-task (thread-pool-submit pool
+                                                        (λ () (parallel-merge-sort left-vec (add1 depth))))])
+                     (define right-sorted (parallel-merge-sort right-vec (add1 depth)))
+                     (define left-sorted (thread-pool-wait left-task))
+                     (merge left-sorted right-sorted))
+                   (let ([left-sorted (parallel-merge-sort left-vec (add1 depth))]
+                         [right-sorted (parallel-merge-sort right-vec (add1 depth))])
+                     (merge left-sorted right-sorted)))]))
+          (parallel-merge-sort vec 0))
+        #:max #f)))
 
 (module+ main
   (define n 1000000)

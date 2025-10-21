@@ -48,23 +48,27 @@
                  (cons elem (vector-ref buckets bucket-idx))))
 
   ;; Step 2: Deduplicate each bucket in parallel
-  (define bucket-futures
-    (for/list ([bucket-idx (in-range num-buckets)])
-      (future
-       (lambda ()
-         (define bucket-list (vector-ref buckets bucket-idx))
-         (define seen (make-hash))
-         (define deduped '())
-         (for ([elem (in-list (reverse bucket-list))])  ; Reverse to preserve order
-           (unless (hash-has-key? seen elem)
-             (hash-set! seen elem #t)
-             (set! deduped (cons elem deduped))))
-         (reverse deduped)))))
+  (define (dedupe-bucket bucket-list)
+    (define seen (make-hash))
+    (define deduped '())
+    (for ([elem (in-list (reverse bucket-list))])  ; Reverse to preserve order
+      (unless (hash-has-key? seen elem)
+        (hash-set! seen elem #t)
+        (set! deduped (cons elem deduped))))
+    (reverse deduped))
 
-  ;; Step 3: Collect results from all buckets
   (define deduped-lists
-    (for/list ([f bucket-futures])
-      (touch f)))
+    (if (<= workers 1)
+        (for/list ([bucket-idx (in-range num-buckets)])
+          (dedupe-bucket (vector-ref buckets bucket-idx)))
+        (call-with-thread-pool workers
+          (λ (pool actual-workers)
+            (define tasks
+              (for/list ([bucket-idx (in-range num-buckets)])
+                (thread-pool-submit pool
+                                    (λ () (dedupe-bucket (vector-ref buckets bucket-idx))))))
+            (thread-pool-wait/collect tasks))
+          #:max num-buckets)))
 
   ;; Step 4: Flatten results
   (list->vector (apply append deduped-lists)))

@@ -49,12 +49,16 @@
              (search (add1 row) (cons col queens))))]))
 
   ;; Parallelize over first row placements
-  (define futures
-    (for/list ([col (in-range n)])
-      (future (lambda () (search 1 (list col))))))
-
-  (for/sum ([f futures])
-    (touch f)))
+  (if (<= workers 1)
+      (nqueens-sequential n)
+      (call-with-thread-pool workers
+        (λ (pool actual-workers)
+          (define tasks
+            (for/list ([col (in-range n)])
+              (thread-pool-submit pool (λ () (search 1 (list col))))))
+          (for/sum ([task (in-list tasks)])
+            (thread-pool-wait task)))
+        #:max n)))
 
 (module+ main
   (define n 12)

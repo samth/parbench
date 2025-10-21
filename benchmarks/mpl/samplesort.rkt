@@ -83,10 +83,17 @@
 
      ;; Step 4: Sort each bucket in parallel
      (define sorted-buckets
-       (map touch
-            (for/list ([bucket-list (in-vector buckets)])
-              (future (lambda ()
-                        (quicksort (list->vector bucket-list)))))))
+       (if (<= workers 1)
+           (for/list ([bucket-list (in-vector buckets)])
+             (quicksort (list->vector bucket-list)))
+           (call-with-thread-pool workers
+             (λ (pool actual-workers)
+               (define tasks
+                 (for/list ([bucket-list (in-vector buckets)])
+                   (thread-pool-submit pool
+                                       (λ () (quicksort (list->vector bucket-list))))))
+               (thread-pool-wait/collect tasks))
+             #:max workers)))
 
      ;; Step 5: Concatenate sorted buckets
      (apply vector-append sorted-buckets)]))

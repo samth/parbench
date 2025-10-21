@@ -47,25 +47,26 @@
 (define (grep-parallel lines pattern workers)
   (define rx (regexp pattern))
   (define n (length lines))
-  (define chunk-size (quotient n workers))
+  (define (process-range start end)
+    (define chunk (take (drop lines start) (- end start)))
+    (for/list ([line (in-list chunk)]
+               [local-idx (in-naturals)]
+               #:when (regexp-match? rx line))
+      (+ start local-idx)))
 
-  (define futures
-    (for/list ([w (in-range workers)])
-      (future
-       (lambda ()
-         (define start (* w chunk-size))
-         (define end (if (= w (sub1 workers))
-                         n
-                         (* (add1 w) chunk-size)))
-         (define chunk (take (drop lines start) (- end start)))
-
-         (for/list ([line (in-list chunk)]
-                    [local-idx (in-naturals)]
-                    #:when (regexp-match? rx line))
-           (+ start local-idx))))))
-
-  ;; Merge results from all workers
-  (sort (apply append (map touch futures)) <))
+  (if (<= workers 1)
+      (grep-sequential lines pattern)
+      (call-with-thread-pool workers
+        (λ (pool actual-workers)
+          (define effective-workers (max 1 (min actual-workers n)))
+          (define chunk-size (max 1 (ceiling (/ n effective-workers))))
+          (define tasks
+            (for/list ([start (in-range 0 n chunk-size)])
+              (define end (min n (+ start chunk-size)))
+              (thread-pool-submit pool (λ () (process-range start end)))))
+          (define results (thread-pool-wait/collect tasks))
+          (sort (apply append results) <))
+        #:max (ceiling (/ n (max 1 (min workers n)))))))
 
 (module+ main
   (define num-lines 10000)
