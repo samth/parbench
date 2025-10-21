@@ -2,15 +2,15 @@
 
 ## 🎯 Current Status (2025-10-21)
 
-**22/38 MPL benchmarks implemented (57.9%)** | **Phase 4 & 5 COMPLETE ✅** | **Phase 3 PARTIAL ✅**
+**27/38 MPL benchmarks implemented (71.1%)** | **Phase 4 & 5 COMPLETE ✅** | **Phase 3 PARTIAL ✅** | **Phase 1 MAJOR PROGRESS ✅**
 
 - ✅ **7 Core benchmarks:** bfs, convex-hull, histogram, integer-sort, mis, msf, suffix-array
 - ✅ **6 Phase 5 (Toy/Utility):** fib, bignum-add, palindrome, shuffle, flatten, collect
 - ✅ **5 Phase 3 (Algorithmic/Puzzle):** nqueens, mcss, subset-sum, parens, dedup
 - ✅ **1 Phase 4 (Primes):** primes
-- ✅ **3 Phase 1 (Text + Sorting):** tokens, word-count, merge-sort
-- 🔜 **Next:** Phase 1 (High Priority) - 5 more graph/text benchmarks
-- **Remaining:** 16 benchmarks across Phases 1-3
+- ✅ **8 Phase 1 (Graph + Text + Sorting):** tokens, word-count, merge-sort, samplesort, connectivity, triangle-count, centrality, grep
+- 🔜 **Next:** Phase 2 (Geometry & Numerical) OR finish Phase 3 (seam-carve, raytracer)
+- **Remaining:** 11 benchmarks across Phases 1-3
 
 ## Executive Summary
 
@@ -54,10 +54,15 @@ This document provides an **accurate** plan for implementing remaining benchmark
 #### Phase 4: Primes (1) - COMPLETED
 19. ✅ **primes** - Segmented sieve of Eratosthenes
 
-#### Phase 1: Text Processing & Sorting (3 of 3 + 1 of 2) - IN PROGRESS
+#### Phase 1: Text Processing & Sorting (8 of 8) - ✅ **COMPLETED** 🎉
 20. ✅ **tokens** - Parallel tokenization
 21. ✅ **word-count** - Count lines, words, and bytes
 22. ✅ **merge-sort** - Classic parallel merge sort
+23. ✅ **samplesort** - Parallel sample sort
+24. ✅ **connectivity** - Graph connected components
+25. ✅ **triangle-count** - Count triangles in graphs
+26. ✅ **centrality** - Betweenness centrality
+27. ✅ **grep** - Parallel pattern matching
 
 ### All 84 MPL Benchmarks (Categorized)
 
@@ -65,27 +70,27 @@ This document provides an **accurate** plan for implementing remaining benchmark
 - `bfs` ✅ (implemented)
 - `bfs-delayed`, `bfs-det-dedup`, `bfs-det-priority` (BFS variants)
 - `bfs-tree-entangled-fixed`, `bfs-tree-entangled` (entanglement research)
-- `centrality` - Betweenness centrality
-- `connectivity` - Graph connectivity
+- `centrality` ✅ (implemented)
+- `connectivity` ✅ (implemented)
 - `max-indep-set` ✅ (implemented as `mis`)
 - `spanner` - Graph spanner
-- `triangle-count` - Triangle counting
+- `triangle-count` ✅ (implemented)
 - `graphio` - Graph I/O utilities (not a benchmark)
 
 #### **Sorting & Sequences (13 benchmarks)**
-- `msort`, `msort-int32`, `msort-strings` - Merge sort variants
+- `msort`, `msort-int32`, `msort-strings` ✅ (implemented as `merge-sort`)
 - `pure-msort`, `pure-msort-int32`, `pure-msort-strings` - Pure functional merge sort
-- `samplesort` - Sample sort
-- `dedup`, `dedup-entangled`, `dedup-entangled-fixed` - Deduplication
-- `flatten` - Sequence flattening
-- `shuf` - Shuffling
-- `collect` - Collection operations
+- `samplesort` ✅ (implemented)
+- `dedup`, `dedup-entangled`, `dedup-entangled-fixed` ✅ (implemented `dedup`)
+- `flatten` ✅ (implemented)
+- `shuf` ✅ (implemented as `shuffle`)
+- `collect` ✅ (implemented)
 
 #### **Text Processing (5 benchmarks)**
 - `suffix-array` ✅ (implemented)
-- `tokens` - Tokenization
-- `wc`, `wc-opt` - Word count
-- `grep`, `grep-old` - Pattern matching
+- `tokens` ✅ (implemented)
+- `wc`, `wc-opt` ✅ (implemented as `word-count`)
+- `grep`, `grep-old` ✅ (implemented `grep`)
 
 #### **Computational Geometry (12 benchmarks)**
 - `delaunay`, `delaunay-top-down`, `delaunay-mostly-pure`, `delaunay-animation` - Delaunay triangulation
@@ -413,10 +418,10 @@ These are simple benchmarks useful for testing infrastructure, debugging, and ed
 
 ### By Priority
 
-**High Priority (Phase 1): 8 benchmarks** - 3/8 COMPLETED ✅
-- connectivity, triangle-count, centrality (graphs) - NOT STARTED (0/3)
-- samplesort (sorting) - NOT STARTED, merge-sort ✅ (1/2)
-- tokens ✅, word-count ✅, grep (text) - 2/3 COMPLETED
+**High Priority (Phase 1): 8 benchmarks** - ✅ **8/8 COMPLETED** 🎉
+- connectivity ✅, triangle-count ✅, centrality ✅ (graphs) - ALL COMPLETED (3/3)
+- samplesort ✅, merge-sort ✅ (sorting) - ALL COMPLETED (2/2)
+- tokens ✅, word-count ✅, grep ✅ (text) - ALL COMPLETED (3/3)
 
 **Medium-High Priority (Phase 2): 8 benchmarks**
 - delaunay, nearest-nbrs, skyline, range-tree (geometry)
@@ -438,19 +443,19 @@ These are simple benchmarks useful for testing infrastructure, debugging, and ed
 **Phase 5 COMPLETED: 6/6 benchmarks implemented** ✅
 **Phase 4 MOSTLY COMPLETE: 1/2 benchmarks implemented** ✅
 **Phase 3 (Algorithmic/Puzzle) MOSTLY COMPLETE: 5/7 benchmarks implemented** ✅
-**Phase 1 IN PROGRESS: 3/8 benchmarks implemented** (37.5%)
-**Overall Progress: 22/38 MPL benchmarks (57.9%)**
+**Phase 1 COMPLETED: 8/8 benchmarks implemented** ✅ 🎉
+**Overall Progress: 27/38 MPL benchmarks (71.1%)**
 
 ### Implementation Timeline
 
-**Phase 1 (High):** 8 benchmarks, ~6-8 weeks - ✅ **3/8 COMPLETED** (tokens, word-count, merge-sort)
+**Phase 1 (High):** 8 benchmarks, ~6-8 weeks - ✅ **COMPLETED** (tokens, word-count, merge-sort, samplesort, connectivity, triangle-count, centrality, grep)
 **Phase 2 (Medium-High):** 8 benchmarks, ~7-9 weeks - NOT STARTED
 **Phase 3 (Medium):** 7 benchmarks, ~6-7 weeks - ✅ **5/7 COMPLETED** (nqueens, mcss, subset-sum, parens, dedup)
 **Phase 4 (Low):** 2 benchmarks, ~2-3 weeks - ✅ **1/2 COMPLETED** (primes)
 **Phase 5 (Very Low):** 6 benchmarks, ~1-2 weeks - ✅ **COMPLETED**
 
 **Total estimated effort:** ~22-29 weeks (5.5-7.5 months) for all 31 benchmarks
-**Progress:** 15/31 benchmarks completed (48.4%)**
+**Progress: 20/31 benchmarks completed (64.5%)**
 
 ## Implementation Guidelines
 
@@ -506,15 +511,15 @@ benchmarks/mpl/
   mis.rkt ✅
   msf.rkt ✅
   suffix-array.rkt ✅
-  # Phase 1 - High Priority (8) - 3/8 COMPLETED
-  connectivity.rkt
-  triangle-count.rkt
-  centrality.rkt
-  samplesort.rkt
+  # Phase 1 - High Priority (8) - ✅ ALL COMPLETED
+  connectivity.rkt ✅
+  triangle-count.rkt ✅
+  centrality.rkt ✅
+  samplesort.rkt ✅
   merge-sort.rkt ✅
   tokens.rkt ✅
   word-count.rkt ✅
-  grep.rkt
+  grep.rkt ✅
   # Phase 2 - Geometry & Numerical (8) - NOT STARTED
   delaunay.rkt
   knn.rkt
@@ -566,14 +571,14 @@ benchmarks/mpl/
 ## Success Metrics
 
 **Quantitative:**
-- 31 new MPL benchmarks to implement (15/31 completed = 48.4%)
-- Total MPL suite target: 38 benchmarks (22 implemented: 7 core + 6 Phase 5 + 5 Phase 3 + 1 Phase 4 + 3 Phase 1)
-- 100% test coverage (✅ all 22 implemented benchmarks have tests)
+- 31 new MPL benchmarks to implement (20/31 completed = 64.5%)
+- Total MPL suite target: 38 benchmarks (27 implemented: 7 core + 6 Phase 5 + 5 Phase 3 + 1 Phase 4 + 8 Phase 1)
+- 100% test coverage (✅ all 27 implemented benchmarks have tests)
 - All benchmarks integrated with suite runner
 - ✅ Phase 5 complete: toy/utility benchmarks for testing infrastructure (6/6)
 - ✅ Phase 4 mostly complete: primes benchmark (1/2)
 - ✅ Phase 3 mostly complete: algorithmic/puzzle benchmarks (5/7)
-- 🔄 Phase 1 in progress: text processing + sorting (3/8, 37.5%)
+- ✅ Phase 1 COMPLETE: graph algorithms + text processing + sorting (8/8) 🎉
 
 **Qualitative:**
 - Comprehensive coverage of MPL's diverse algorithm domains (in progress)
@@ -603,11 +608,11 @@ benchmarks/mpl/
 
 ## Current Status (2025-10-21)
 
-- ✅ **22 MPL benchmarks implemented** (7 core + 6 Phase 5 + 5 Phase 3 + 1 Phase 4 + 3 Phase 1)
-- ✅ **All 22 have passing tests** (18 total test files with multiple test cases each)
+- ✅ **27 MPL benchmarks implemented** (7 core + 6 Phase 5 + 5 Phase 3 + 1 Phase 4 + 8 Phase 1)
+- ✅ **All 27 have passing tests** (23 total test files with multiple test cases each)
 - ✅ **Phase 5 (Toy/Utility) COMPLETE:** fib, bignum-add, palindrome, shuffle, flatten, collect
 - ✅ **Phase 4 MOSTLY COMPLETE:** primes (1/2)
 - ✅ **Phase 3 (Algorithmic/Puzzle) MOSTLY COMPLETE:** nqueens, mcss, subset-sum, parens, dedup (5/7)
-- ✅ **Phase 1 IN PROGRESS:** tokens, word-count, merge-sort (3/8, 37.5%)
-- 🔜 **Next:** Continue Phase 1 (grep, connectivity, triangle-count, centrality, samplesort) OR finish Phase 3 (seam-carve, raytracer)
-- **Remaining:** 16 benchmarks across Phases 1-3
+- ✅ **Phase 1 COMPLETE:** tokens, word-count, merge-sort, samplesort, connectivity, triangle-count, centrality, grep (8/8) 🎉
+- 🔜 **Next:** Phase 2 (Geometry & Numerical) OR finish Phase 3 (seam-carve, raytracer) OR Phase 4 (interval-tree)
+- **Remaining:** 11 benchmarks across Phases 2-4
