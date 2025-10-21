@@ -2,12 +2,13 @@
 
 ## 🎯 Current Status (2025-10-21)
 
-**13/38 MPL benchmarks implemented (34.2%)** | **Phase 5 COMPLETE ✅**
+**18/38 MPL benchmarks implemented (47.4%)** | **Phase 5 COMPLETE ✅** | **Phase 3.2 & 3.3 COMPLETE ✅**
 
 - ✅ **7 Core benchmarks:** bfs, convex-hull, histogram, integer-sort, mis, msf, suffix-array
 - ✅ **6 Phase 5 (Toy/Utility):** fib, bignum-add, palindrome, shuffle, flatten, collect
-- 🔜 **Next:** Phase 1 (High Priority) - 8 graph/sorting/text benchmarks
-- **Remaining:** 25 benchmarks across Phases 1-4
+- ✅ **5 Phase 3 (Algorithmic/Puzzle):** nqueens, mcss, subset-sum, parens, dedup
+- 🔜 **Next:** Phase 1 (High Priority) - 8 graph/sorting/text benchmarks OR Phase 3.1 (Image/Media) - 2 benchmarks
+- **Remaining:** 20 benchmarks across Phases 1-4
 
 ## Executive Summary
 
@@ -22,7 +23,7 @@ This document provides an **accurate** plan for implementing remaining benchmark
 
 ## Complete MPL Benchmark Inventory
 
-### Already Implemented (13 benchmarks)
+### Already Implemented (18 benchmarks)
 
 #### Core MPL Benchmarks (7)
 1. ✅ **bfs** - Breadth-first search (matches MPL's `bfs`)
@@ -40,6 +41,13 @@ This document provides an **accurate** plan for implementing remaining benchmark
 11. ✅ **shuffle** - Parallel random shuffle
 12. ✅ **flatten** - Flatten nested sequences
 13. ✅ **collect** - Collect/filter operations
+
+#### Phase 3: Algorithmic/Puzzle Benchmarks (5) - COMPLETED
+14. ✅ **nqueens** - N-Queens backtracking
+15. ✅ **mcss** - Maximum contiguous subsequence sum
+16. ✅ **subset-sum** - Subset sum problem
+17. ✅ **parens** - Parentheses matching
+18. ✅ **dedup** - Deduplication
 
 ### All 84 MPL Benchmarks (Categorized)
 
@@ -265,37 +273,42 @@ Many MPL benchmarks are:
 
 #### 3.2 Optimization Problems
 
-**N-Queens** (`nqueens.rkt`)
+**N-Queens** (`nqueens.rkt`) ✅
 - **MPL:** `nqueens`
 - **Description:** N-queens backtracking
 - **Value:** Constraint satisfaction
 - **Estimated effort:** 3-4 days
+- **Status:** COMPLETED
 
-**Maximum Contiguous Subsequence Sum** (`mcss.rkt`)
+**Maximum Contiguous Subsequence Sum** (`mcss.rkt`) ✅
 - **MPL:** `mcss`
 - **Description:** MCSS problem (1D max subarray)
 - **Value:** Classic DP problem, parallel prefix patterns
 - **Estimated effort:** 2 days
+- **Status:** COMPLETED
 
-**Subset Sum** (`subset-sum.rkt`)
+**Subset Sum** (`subset-sum.rkt`) ✅
 - **MPL:** `subset-sum`
 - **Description:** Subset sum problem
 - **Value:** Classic NP-complete problem
 - **Estimated effort:** 3-4 days
+- **Status:** COMPLETED
 
 #### 3.3 Sequence Problems
 
-**Parentheses Matching** (`parens.rkt`)
+**Parentheses Matching** (`parens.rkt`) ✅
 - **MPL:** `parens`
 - **Description:** Parallel paren matching/balancing
 - **Value:** Tests parallel prefix operations
 - **Estimated effort:** 2 days
+- **Status:** COMPLETED
 
-**Deduplication** (`dedup.rkt`)
+**Deduplication** (`dedup.rkt`) ✅
 - **MPL:** `dedup`
 - **Description:** Remove duplicates from sequence
 - **Value:** Data cleaning operation
 - **Estimated effort:** 2 days
+- **Status:** COMPLETED
 
 ### Phase 4: Primes & Specialized (Priority: LOW)
 
@@ -395,10 +408,10 @@ These are simple benchmarks useful for testing infrastructure, debugging, and ed
 - delaunay, nearest-nbrs, skyline, range-tree (geometry)
 - dense-matmul, sparse-mxv, line-fit, integrate (numerical)
 
-**Medium Priority (Phase 3): 7 benchmarks**
-- seam-carve, raytracer (image/graphics)
-- nqueens, mcss, subset-sum (optimization)
-- parens, dedup (sequences)
+**Medium Priority (Phase 3): 7 benchmarks** - 5/7 COMPLETED ✅
+- seam-carve, raytracer (image/graphics) - NOT STARTED
+- nqueens ✅, mcss ✅, subset-sum ✅ (optimization) - COMPLETED
+- parens ✅, dedup ✅ (sequences) - COMPLETED
 
 **Low Priority (Phase 4): 2 benchmarks**
 - primes, interval-tree
@@ -407,18 +420,20 @@ These are simple benchmarks useful for testing infrastructure, debugging, and ed
 - fib ✅, bignum-add ✅, palindrome ✅, shuffle ✅, flatten ✅, collect ✅
 
 **Total to port: 31 benchmarks** (from 84 MPL benchmarks, 7 already done)
-**Phase 5 COMPLETED: 6/6 benchmarks implemented**
+**Phase 5 COMPLETED: 6/6 benchmarks implemented** ✅
+**Phase 3 (Algorithmic/Puzzle) COMPLETED: 5/7 benchmarks implemented** ✅
+**Overall Progress: 18/38 MPL benchmarks (47.4%)**
 
 ### Implementation Timeline
 
 **Phase 1 (High):** 8 benchmarks, ~6-8 weeks - NOT STARTED
 **Phase 2 (Medium-High):** 8 benchmarks, ~7-9 weeks - NOT STARTED
-**Phase 3 (Medium):** 7 benchmarks, ~6-7 weeks - NOT STARTED
+**Phase 3 (Medium):** 7 benchmarks, ~6-7 weeks - ✅ **5/7 COMPLETED** (nqueens, mcss, subset-sum, parens, dedup)
 **Phase 4 (Low):** 2 benchmarks, ~2-3 weeks - NOT STARTED
 **Phase 5 (Very Low):** 6 benchmarks, ~1-2 weeks - ✅ **COMPLETED**
 
 **Total estimated effort:** ~22-29 weeks (5.5-7.5 months) for all 31 benchmarks
-**Progress:** 6/31 benchmarks completed (19.4%)
+**Progress:** 11/31 benchmarks completed (35.5%)**
 
 ## Implementation Guidelines
 
@@ -492,14 +507,14 @@ benchmarks/mpl/
   sparse-mxv.rkt
   line-fit.rkt
   integrate.rkt
-  # Phase 3 - Specialized (7) - NOT STARTED
+  # Phase 3 - Specialized (7) - 5/7 COMPLETED
   seam-carve.rkt
   raytracer.rkt
-  nqueens.rkt
-  mcss.rkt
-  subset-sum.rkt
-  parens.rkt
-  dedup.rkt
+  nqueens.rkt ✅
+  mcss.rkt ✅
+  subset-sum.rkt ✅
+  parens.rkt ✅
+  dedup.rkt ✅
   # Phase 4 - Primes & Advanced (2) - NOT STARTED
   primes.rkt
   interval-tree.rkt
@@ -534,11 +549,12 @@ benchmarks/mpl/
 ## Success Metrics
 
 **Quantitative:**
-- 31 new MPL benchmarks to implement (6/31 completed = 19.4%)
-- Total MPL suite target: 38 benchmarks (13 implemented: 7 core + 6 Phase 5)
-- 100% test coverage (✅ all 13 implemented benchmarks have tests)
+- 31 new MPL benchmarks to implement (11/31 completed = 35.5%)
+- Total MPL suite target: 38 benchmarks (18 implemented: 7 core + 6 Phase 5 + 5 Phase 3)
+- 100% test coverage (✅ all 18 implemented benchmarks have tests)
 - All benchmarks integrated with suite runner
 - ✅ Phase 5 complete: toy/utility benchmarks for testing infrastructure (6/6)
+- ✅ Phase 3 mostly complete: algorithmic/puzzle benchmarks (5/7)
 
 **Qualitative:**
 - Comprehensive coverage of MPL's diverse algorithm domains (in progress)
@@ -559,16 +575,18 @@ benchmarks/mpl/
 
 1. ✅ **VERIFIED: Accessed actual MPL repository** - Found 84 benchmarks
 2. ✅ **Phase 5 COMPLETED** - All 6 toy/utility benchmarks implemented with tests
-3. **Begin Phase 1** with connectivity and triangle-count as pilots
-4. **Update benchmarks/mpl/README.md** to list new benchmarks as added
-5. **Coordinate with Sandmark plan** for dense-matmul
-6. **Create test infrastructure** for new algorithm categories
-7. **Retire MPL_REMAINING_PLAN.md** (replaced by this accurate plan)
+3. ✅ **Phase 3 (Algorithmic/Puzzle) MOSTLY COMPLETE** - 5/7 benchmarks implemented (nqueens, mcss, subset-sum, parens, dedup)
+4. **Begin Phase 1** with connectivity and triangle-count as pilots
+5. **Update benchmarks/mpl/README.md** to list new benchmarks as added
+6. **Coordinate with Sandmark plan** for dense-matmul
+7. **Create test infrastructure** for new algorithm categories
+8. **Retire MPL_REMAINING_PLAN.md** (replaced by this accurate plan)
 
 ## Current Status (2025-10-21)
 
-- ✅ **13 MPL benchmarks implemented** (7 core + 6 Phase 5)
-- ✅ **All 13 have passing tests**
+- ✅ **18 MPL benchmarks implemented** (7 core + 6 Phase 5 + 5 Phase 3)
+- ✅ **All 18 have passing tests**
 - ✅ **Phase 5 (Toy/Utility) COMPLETE:** fib, bignum-add, palindrome, shuffle, flatten, collect
-- 🔜 **Next:** Phase 1 (High Priority) - 8 graph/sorting/text benchmarks
-- **Remaining:** 25 benchmarks across Phases 1-4
+- ✅ **Phase 3 (Algorithmic/Puzzle) MOSTLY COMPLETE:** nqueens, mcss, subset-sum, parens, dedup (5/7)
+- 🔜 **Next:** Phase 1 (High Priority) - 8 graph/sorting/text benchmarks OR finish Phase 3 (seam-carve, raytracer)
+- **Remaining:** 20 benchmarks across Phases 1-4
