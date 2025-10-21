@@ -58,16 +58,43 @@
 
   (reverse tokens))
 
-;; Parallel tokenization using chunking
-;; For simplicity and correctness, use sequential algorithm
-;; TODO: Implement true parallel tokenization with proper boundary handling
+(define (compute-token-chunk text start end total-length)
+  (define tokens '())
+  (for ([idx (in-range start end)])
+    (define ch (string-ref text idx))
+    (when (and (not (whitespace? ch))
+               (or (= idx 0)
+                   (whitespace? (string-ref text (sub1 idx)))))
+      (define end-index
+        (let loop ([pos idx])
+          (define next-pos (add1 pos))
+          (cond
+            [(>= next-pos total-length) total-length]
+            [(whitespace? (string-ref text next-pos)) next-pos]
+            [else (loop next-pos)])))
+      (set! tokens (cons (substring text idx end-index) tokens))))
+  (reverse tokens))
+
+;; Parallel tokenization using chunking and thread pools
 (define (tokens-parallel text workers)
-  ;; Proper parallel tokenization requires:
-  ;; 1. Chunking at whitespace boundaries
-  ;; 2. Handling partial tokens at chunk boundaries
-  ;; 3. Merging results correctly
-  ;; For now, use sequential to ensure correctness
-  (tokens-sequential text))
+  (define len (string-length text))
+  (cond
+    [(or (<= workers 1) (zero? len))
+     (tokens-sequential text)]
+    [else
+     (call-with-thread-pool workers
+       (λ (pool actual-workers)
+         (define task-count (max 1 (min actual-workers len)))
+         (define chunk-size (max 1 (ceiling (/ len task-count))))
+         (define threads
+           (for/list ([start (in-range 0 len chunk-size)])
+             (define end (min len (+ start chunk-size)))
+             (thread-pool-submit pool
+                                 (λ ()
+                                   (compute-token-chunk text start end len)))))
+         (define chunk-token-lists (thread-pool-wait/collect threads))
+         (apply append chunk-token-lists))
+       #:max len)]))
 
 (module+ main
   (define size 1000000)

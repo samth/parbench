@@ -66,13 +66,48 @@
 
   (list lines words n))
 
-;; Parallel word count using reduction
-;; NOTE: Proper parallel word count requires careful handling of word boundaries
-;; For now, using sequential to ensure correctness
+(struct wc-chunk (lines word-starts) #:transparent)
+
+(define (compute-wc-chunk text start end)
+  (define lines 0)
+  (define word-starts 0)
+  (for ([idx (in-range start end)])
+    (define ch (string-ref text idx))
+    (when (char=? ch #\newline)
+      (set! lines (add1 lines)))
+    (when (and (not (whitespace? ch))
+               (or (= idx 0)
+                   (whitespace? (string-ref text (sub1 idx)))))
+      (set! word-starts (add1 word-starts))))
+  (wc-chunk lines word-starts))
+
+;; Parallel word count using chunk analysis with thread pools
 (define (word-count-parallel text workers)
-  ;; TODO: Implement true parallel word count with proper boundary handling
-  ;; For now, just use sequential to ensure correctness
-  (word-count-sequential text))
+  (define len (string-length text))
+  (cond
+    [(or (<= workers 1) (zero? len))
+     (word-count-sequential text)]
+    [else
+     (call-with-thread-pool
+      workers
+      (λ (pool actual-workers)
+        (define task-count (max 1 (min actual-workers len)))
+        (define chunk-size (max 1 (ceiling (/ len task-count))))
+        (define threads
+          (for/list ([start (in-range 0 len chunk-size)])
+            (define end (min len (+ start chunk-size)))
+            (thread-pool-submit
+             pool
+             (λ ()
+               (compute-wc-chunk text start end)))))
+        (define summaries (thread-pool-wait/collect threads))
+        (define total-lines 0)
+        (define total-words 0)
+        (for ([summary (in-list summaries)])
+          (set! total-lines (+ total-lines (wc-chunk-lines summary)))
+          (set! total-words (+ total-words (wc-chunk-word-starts summary))))
+        (list total-lines total-words len))
+      #:max len)]))
 
 (module+ main
   (define size 1000000)
