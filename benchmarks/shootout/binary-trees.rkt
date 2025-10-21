@@ -1,60 +1,66 @@
 #lang racket
 
-(require racket/async-channel
+(require "../common/parallel.rkt"
          "../common/cli.rkt"
          "../common/run.rkt"
          "../common/logging.rkt")
 
 (provide binary-trees)
 
-(define (tree-check depth)
-  (define (loop d)
-    (if (zero? d)
-        1
-        (+ 1 (loop (sub1 d)) (loop (sub1 d)))))
-  (loop depth))
+(struct tree (left right) #:transparent)
+
+(define (make-tree depth)
+  (if (zero? depth)
+      (tree #f #f)
+      (tree (make-tree (sub1 depth))
+            (make-tree (sub1 depth)))))
+
+(define (check-tree node)
+  (if (tree-left node)
+      (+ 1
+         (check-tree (tree-left node))
+         (check-tree (tree-right node)))
+      1))
 
 (define (iterations-for-depth max-depth depth min-depth)
   (arithmetic-shift 1 (- (+ max-depth min-depth) depth)))
 
 (define (sum-checks depth iterations workers)
   (define worker-count (max 1 workers))
-  (define chunk-size (max 1 (ceiling (/ iterations worker-count))))
   (cond
     [(= worker-count 1)
-     (for/sum ([i (in-range iterations)]) (tree-check depth))]
+     (for/sum ([_ (in-range iterations)])
+       (check-tree (make-tree depth)))]
     [else
-     ;; Create parallel thread pool
-     (define pool (make-parallel-thread-pool worker-count))
-     (define ranges (for/list ([start (in-range 0 iterations chunk-size)])
-                      (cons start (min iterations (+ start chunk-size)))))
-     (define ch (make-channel))
-     ;; Spawn parallel threads
-     (define threads
-       (for/list ([rg (in-list ranges)])
-         (define start (car rg))
-         (define end (cdr rg))
-         (thread
-          #:pool pool
-          (λ ()
-            (define sum 0)
-            (for ([i (in-range start end)])
-              (set! sum (+ sum (tree-check depth))))
-            (channel-put ch sum)))))
-     ;; Collect results
-     (define result
-       (for/sum ([i (in-range (length ranges))])
-         (channel-get ch)))
-     ;; Wait for all threads
-     (for ([t (in-list threads)])
-       (thread-wait t))
-     result]))
+     (define chunk-size
+       (max 1 (ceiling (/ iterations worker-count))))
+     (define ranges
+       (for/list ([start (in-range 0 iterations chunk-size)])
+         (cons start (min iterations (+ start chunk-size)))))
+     (call-with-thread-pool worker-count
+       (λ (pool actual-workers)
+         (define partial-sums
+           (thread-pool-wait/collect
+            (for/list ([rg (in-list ranges)])
+              (define start (car rg))
+              (define end (cdr rg))
+              (thread-pool-submit
+               pool
+               (λ ()
+                 (for/sum ([_ (in-range start end)])
+                   (check-tree (make-tree depth))))))))
+         (for/sum ([value (in-list partial-sums)])
+           (if (and (list? value) (pair? value))
+               (car value)
+               value)))
+       #:max (length ranges))]))
 
 (define (binary-trees max-depth #:workers [workers 1] #:min-depth [min-depth 4])
   (define stretch-depth (add1 max-depth))
-  (define stretch-check (tree-check stretch-depth))
+  (define stretch-check (check-tree (make-tree stretch-depth)))
   (define long-lived-depth max-depth)
-  (define long-lived-check (tree-check long-lived-depth))
+  (define long-lived-tree (make-tree long-lived-depth))
+  (define long-lived-check (check-tree long-lived-tree))
   (define results
     (for/list ([depth (in-range min-depth (add1 max-depth) 2)])
       (define iterations (iterations-for-depth max-depth depth min-depth))
