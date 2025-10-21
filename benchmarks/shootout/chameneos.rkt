@@ -1,6 +1,7 @@
 #lang racket
 
 (require racket/match
+         "../common/parallel.rkt"
          "../common/cli.rkt"
          "../common/run.rkt"
          "../common/logging.rkt")
@@ -18,58 +19,68 @@
      (case c2 [(yellow) 'red] [(red) 'yellow] [else c1])]))
 
 ;; Meeting place coordinator
-(define (meeting-place meeting-ch n)
+(define (meeting-place pool meeting-ch total-meetings creature-count)
   (thread
-   (lambda ()
-     (let loop ([n n])
-       (if (zero? n)
-           ;; Fade all creatures
-           (let loop ()
-             (let ([c (channel-get meeting-ch)])
-               (channel-put (car c) #f)
-               (loop)))
-           ;; Let two creatures meet
-           (match-let ([(cons ch1 v1) (channel-get meeting-ch)]
-                       [(cons ch2 v2) (channel-get meeting-ch)])
-             (channel-put ch1 v2)
-             (channel-put ch2 v1)
-             (loop (sub1 n))))))))
+   #:pool pool
+   (λ ()
+     (let loop ([remaining total-meetings]
+                [waiting #f]
+                [faded 0])
+       (define msg (channel-get meeting-ch))
+       (define ch (car msg))
+       (define payload (cdr msg))
+       (cond
+         [(zero? remaining)
+          (channel-put ch #f)
+          (define next-faded (add1 faded))
+          (unless (= next-faded creature-count)
+            (loop remaining waiting next-faded))]
+         [(not waiting)
+          (loop remaining msg faded)]
+         [else
+          (define other waiting)
+          (define other-ch (car other))
+          (define other-payload (cdr other))
+          (channel-put ch other-payload)
+          (channel-put other-ch payload)
+          (loop (sub1 remaining) #f faded)])))))
 
 ;; Individual creature
-(define (creature color meeting-ch result-ch)
+(define (creature pool color meeting-ch result-ch)
   (thread
-   (lambda ()
-     (let ([ch (make-channel)]
-           [name (gensym)])
-       (let loop ([color color] [met 0] [same 0])
-         (channel-put meeting-ch (cons ch (cons color name)))
-         (match (channel-get ch)
-           [(cons other-color other-name)
-            ;; Meet another creature
-            (sleep 0) ; avoid imbalance from weak fairness
-            (loop (change-color color other-color)
-                  (add1 met)
-                  (+ same (if (eq? name other-name) 1 0)))]
-           [#f
-            ;; Done - return results
-            (channel-put result-ch (cons met same))]))))))
+   #:pool pool
+   (λ ()
+     (define ch (make-channel))
+     (define name (gensym))
+     (let loop ([current-color color] [met 0] [same 0])
+       (channel-put meeting-ch (cons ch (cons current-color name)))
+       (match (channel-get ch)
+         [(cons other-color other-name)
+          (loop (change-color current-color other-color)
+                (add1 met)
+                (+ same (if (eq? name other-name) 1 0)))]
+         [#f
+          (channel-put result-ch (cons met same))])))))
 
 (define (run-chameneos n colors)
-  (define result-ch (make-channel))
+  (define creature-count (length colors))
   (define meeting-ch (make-channel))
-
-  (meeting-place meeting-ch n)
-
-  (for ([color colors])
-    (creature color meeting-ch result-ch))
-
-  (define results
-    (for/list ([_ colors])
-      (channel-get result-ch)))
-
-  (list (length results)
-        (apply + (map car results))
-        (apply + (map cdr results))))
+  (define result-ch (make-channel))
+  (call-with-thread-pool (max 1 creature-count)
+    (λ (pool _actual)
+      (define coordinator (meeting-place pool meeting-ch n creature-count))
+      (define creatures
+        (for/list ([color colors])
+          (creature pool color meeting-ch result-ch)))
+      (define results
+        (for/list ([_ colors])
+          (channel-get result-ch)))
+      (for ([t creatures]) (thread-wait t))
+      (thread-wait coordinator)
+      (list creature-count
+            (apply + (map car results))
+            (apply + (map cdr results))))
+    #:max (max 1 (add1 creature-count))))
 
 (define (chameneos n #:colors [colors '(blue red yellow)])
   (run-chameneos n colors))
