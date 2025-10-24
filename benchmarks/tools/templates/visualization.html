@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>@@TITLE@@</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 2rem;
+      color: #0f172a;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100vh - 4rem);
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      padding: 2.5rem 2rem 2rem;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 2.4rem;
+      margin-bottom: 0.4rem;
+      font-weight: 700;
+    }
+
+    .header p {
+      font-size: 1rem;
+      opacity: 0.9;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      padding: 1.5rem 2rem;
+      background: #f1f5f9;
+      border-bottom: 1px solid #e2e8f0;
+      align-items: center;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .control-group label {
+      font-weight: 600;
+      color: #475569;
+      font-size: 0.9rem;
+    }
+
+    .control-group select {
+      padding: 0.45rem 0.9rem;
+      border-radius: 8px;
+      border: 1px solid #cbd5f5;
+      background: #fff;
+      font-size: 0.9rem;
+      color: #1e293b;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      cursor: pointer;
+    }
+
+    .control-group select:hover {
+      border-color: #667eea;
+    }
+
+    .control-group select:focus {
+      outline: none;
+      border-color: #4f46e5;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+
+    .content {
+      padding: 2rem;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 2rem;
+      flex: 1;
+    }
+
+    .chart-container {
+      position: relative;
+      min-height: 420px;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+      padding: 1.5rem;
+    }
+
+    .section {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+      padding: 1.5rem 1.75rem 1.75rem;
+    }
+
+    .section h2 {
+      font-size: 1.25rem;
+      color: #1e293b;
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+    }
+
+    .stat-card {
+      background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+      padding: 0.85rem 1rem;
+      border-radius: 10px;
+      border: 1px solid #cbd5f5;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(15, 23, 42, 0.08);
+    }
+
+    .stat-card h3 {
+      color: #475569;
+      font-size: 0.8rem;
+      margin-bottom: 0.4rem;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .stat-card .value {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #4f46e5;
+    }
+
+    .stat-card .unit {
+      font-size: 0.85rem;
+      color: #64748b;
+      margin-left: 0.25rem;
+    }
+
+    .details-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+    }
+
+    .details-table th {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 1rem;
+      text-align: left;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.85rem;
+      letter-spacing: 0.5px;
+      position: relative;
+    }
+
+    .details-table th[data-column] {
+      cursor: pointer;
+    }
+
+    .details-table th[data-column]::after {
+      content: '';
+      position: absolute;
+      right: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      border: 4px solid transparent;
+    }
+
+    .details-table th[data-sort="asc"]::after {
+      border-bottom-color: white;
+    }
+
+    .details-table th[data-sort="desc"]::after {
+      border-top-color: white;
+    }
+
+    .details-table th[data-sort="none"]::after {
+      display: none;
+    }
+
+    .details-table td {
+      padding: 1rem;
+      border-bottom: 1px solid #e2e8f0;
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      font-size: 0.95rem;
+      color: #1e293b;
+    }
+
+    .details-table tbody tr:hover {
+      background: #f8fafc;
+    }
+
+    .details-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .benchmark-name {
+      font-weight: 600;
+      color: #1e293b;
+    }
+
+    .variant-name {
+      display: inline-block;
+      padding: 0.3rem 0.8rem;
+      background: #ede9fe;
+      color: #5b21b6;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    footer {
+      text-align: center;
+      padding: 1.5rem;
+      background: #f1f5f9;
+      color: #64748b;
+      font-size: 0.9rem;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 1rem;
+      }
+
+      .controls {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .control-group {
+        justify-content: space-between;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>@@TITLE@@</h1>
+      <p>Interactive Benchmark Scaling Dashboard</p>
+    </header>
+
+    <section class="controls">
+      <div class="control-group">
+        <label for="benchmarkFilter">Benchmark</label>
+        <select id="benchmarkFilter"></select>
+      </div>
+      <div class="control-group">
+        <label for="metricType">Metric</label>
+        <select id="metricType">
+          <option value="real_mean">Real Time (Mean)</option>
+          <option value="cpu_mean">CPU Time (Mean)</option>
+          <option value="gc_mean">GC Time (Mean)</option>
+          <option value="real_min">Real Time (Min)</option>
+          <option value="real_max">Real Time (Max)</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="scaleType">Scale</label>
+        <select id="scaleType">
+          <option value="linear">Linear</option>
+          <option value="logarithmic">Logarithmic</option>
+        </select>
+      </div>
+    </section>
+
+    <main class="content">
+      <section class="section" id="timing-section">
+        <h2>Timing by Workers</h2>
+        <div class="chart-container">
+          <canvas id="benchmarkChart"></canvas>
+        </div>
+      </section>
+
+      <section class="section" id="speedup-section">
+        <h2>Speedup vs Sequential Baseline</h2>
+        <div class="chart-container">
+          <canvas id="speedupChart"></canvas>
+        </div>
+      </section>
+
+      <section class="section" id="details-section">
+        <h2>Detailed Results</h2>
+        <table class="details-table" id="detailsTable">
+          <thead>
+            <tr>
+              <th data-column="benchmark">Benchmark</th>
+              <th data-column="variant">Variant</th>
+              <th data-column="worker">Workers</th>
+              <th data-column="count">Count</th>
+              <th data-column="real_mean">Real Mean (ms)</th>
+              <th data-column="real_stddev">Real StdDev (ms)</th>
+              <th data-column="real_min">Real Min (ms)</th>
+              <th data-column="real_max">Real Max (ms)</th>
+              <th data-column="cpu_mean">CPU Mean (ms)</th>
+              <th data-column="gc_mean">GC Mean (ms)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="stats-grid" id="statsGrid"></div>
+      </section>
+    </main>
+
+    <footer>
+      Generated on <span id="timestamp"></span> · Data points: <span id="dataPoints"></span>
+    </footer>
+  </div>
+
+  <script>
+    const data = @@DATA@@;
+    let timingChart = null;
+    let speedupChart = null;
+    let tableSort = { column: 'worker', direction: 'asc' };
+    let sortingInitialized = false;
+
+    function populateBenchmarkOptions() {
+      const select = document.getElementById('benchmarkFilter');
+      select.innerHTML = '';
+      data.benchmarks.forEach((bench, idx) => {
+        const option = document.createElement('option');
+        option.value = bench.name;
+        option.textContent = bench.name;
+        if (idx === 0) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+    }
+
+    function compareValues(a, b, column) {
+      if (column === 'worker') {
+        const convert = value => {
+          if (value === '—' || value === '' || value === null || value === undefined) {
+            return Number.POSITIVE_INFINITY;
+          }
+          const numeric = Number(value);
+          return Number.isNaN(numeric) ? Number.POSITIVE_INFINITY : numeric;
+        };
+        const na = convert(a[column]);
+        const nb = convert(b[column]);
+        if (na < nb) return -1;
+        if (na > nb) return 1;
+        return 0;
+      }
+
+      const va = a[column];
+      const vb = b[column];
+      const na = typeof va === 'number' ? va : parseFloat(va);
+      const nb = typeof vb === 'number' ? vb : parseFloat(vb);
+      const bothNumbers = !Number.isNaN(na) && !Number.isNaN(nb);
+      if (bothNumbers) {
+        if (na < nb) return -1;
+        if (na > nb) return 1;
+        return 0;
+      }
+      const sa = String(va).toLowerCase();
+      const sb = String(vb).toLowerCase();
+      if (sa < sb) return -1;
+      if (sa > sb) return 1;
+      return 0;
+    }
+
+    function updateSortIndicators() {
+      document.querySelectorAll('#detailsTable thead th[data-column]').forEach(th => {
+        if (th.dataset.column === tableSort.column) {
+          th.setAttribute('data-sort', tableSort.direction);
+        } else {
+          th.setAttribute('data-sort', 'none');
+        }
+      });
+    }
+
+    function setupTableSorting() {
+      if (sortingInitialized) {
+        return;
+      }
+      document.querySelectorAll('#detailsTable thead th[data-column]').forEach(th => {
+        th.setAttribute('data-sort', 'none');
+        th.addEventListener('click', () => {
+          const column = th.dataset.column;
+          if (tableSort.column === column) {
+            tableSort.direction = tableSort.direction === 'asc' ? 'desc' : 'asc';
+          } else {
+            tableSort.column = column;
+            tableSort.direction = 'asc';
+          }
+          updateTable(getSelectedBenchmark());
+        });
+      });
+      sortingInitialized = true;
+    }
+
+    function handleBenchmarkChange() {
+      tableSort = { column: 'worker', direction: 'asc' };
+      updateVisualization();
+    }
+
+    function handleControlsChange() {
+      updateVisualization();
+    }
+
+    function getSelectedBenchmark() {
+      const select = document.getElementById('benchmarkFilter');
+      const selectedName = select.value || (data.benchmarks[0] && data.benchmarks[0].name);
+      return data.benchmarks.find(bench => bench.name === selectedName) || data.benchmarks[0] || null;
+    }
+
+    function flattenVariantsForBench(bench) {
+      if (!bench) {
+        return [];
+      }
+      return bench.variants.map(variant => ({
+        benchmark: bench.name,
+        variant: variant.variant,
+        worker: variant.worker ?? '—',
+        count: variant.count,
+        real_mean: variant.real_mean,
+        real_stddev: variant.real_stddev,
+        real_min: variant.real_min,
+        real_max: variant.real_max,
+        cpu_mean: variant.cpu_mean,
+        gc_mean: variant.gc_mean
+      }));
+    }
+
+    function updateStats(bench) {
+      const statsGrid = document.getElementById('statsGrid');
+      if (!bench) {
+        statsGrid.innerHTML = '';
+        return;
+      }
+
+      const variants = bench.variants;
+      const totalVariants = variants.length;
+      const totalRuns = variants.reduce((acc, variant) => acc + variant.count, 0);
+      const avgRealTime = variants.length
+        ? (variants.reduce((acc, variant) => acc + variant.real_mean, 0) / variants.length).toFixed(2)
+        : 0;
+
+      statsGrid.innerHTML = `
+        <div class="stat-card">
+          <h3>Benchmark</h3>
+          <div class="value">${bench.name}</div>
+        </div>
+        <div class="stat-card">
+          <h3>Total Variants</h3>
+          <div class="value">${totalVariants}</div>
+        </div>
+        <div class="stat-card">
+          <h3>Total Runs</h3>
+          <div class="value">${totalRuns}</div>
+        </div>
+        <div class="stat-card">
+          <h3>Avg Real Time</h3>
+          <div class="value">${avgRealTime}<span class="unit">ms</span></div>
+        </div>
+      `;
+    }
+
+    function updateTable(bench) {
+      const tbody = document.querySelector('#detailsTable tbody');
+      tbody.innerHTML = '';
+
+      const rows = flattenVariantsForBench(bench);
+      const column = tableSort.column;
+      const directionMultiplier = tableSort.direction === 'asc' ? 1 : -1;
+      rows.sort((a, b) => directionMultiplier * compareValues(a, b, column));
+
+      rows.forEach(entry => {
+        const row = tbody.insertRow();
+        row.innerHTML = `
+          <td class="benchmark-name">${entry.benchmark}</td>
+          <td><span class="variant-name">${entry.variant}</span></td>
+          <td class="metric-value">${entry.worker}</td>
+          <td class="metric-value">${entry.count}</td>
+          <td class="metric-value">${entry.real_mean.toFixed(2)}</td>
+          <td class="metric-value">${entry.real_stddev.toFixed(2)}</td>
+          <td class="metric-value">${entry.real_min.toFixed(2)}</td>
+          <td class="metric-value">${entry.real_max.toFixed(2)}</td>
+          <td class="metric-value">${entry.cpu_mean.toFixed(2)}</td>
+          <td class="metric-value">${entry.gc_mean.toFixed(2)}</td>
+        `;
+      });
+      updateSortIndicators();
+    }
+
+    function updateCharts(bench) {
+      const metricType = document.getElementById('metricType').value;
+      const scaleType = document.getElementById('scaleType').value;
+
+      if (!bench) {
+        if (timingChart) {
+          timingChart.destroy();
+          timingChart = null;
+        }
+        if (speedupChart) {
+          speedupChart.destroy();
+          speedupChart = null;
+        }
+        return;
+      }
+
+      const workerValues = Array.from(new Set(
+        bench.variants
+          .map(v => v.worker)
+          .filter(w => w !== null && w !== undefined && w !== false)
+      ));
+      workerValues.sort((a, b) => (
+        typeof a === 'number' && typeof b === 'number'
+          ? a - b
+          : String(a).localeCompare(String(b))
+      ));
+
+      const labels = workerValues.map(w => `w=${w}`);
+      const variants = Array.from(new Set(bench.variants.map(v => v.variant)));
+      const colors = [
+        'rgba(102, 126, 234, 0.8)',
+        'rgba(118, 75, 162, 0.8)',
+        'rgba(237, 100, 166, 0.8)',
+        'rgba(255, 154, 102, 0.8)',
+        'rgba(52, 211, 153, 0.8)',
+        'rgba(59, 130, 246, 0.8)'
+      ];
+
+      const timingDatasets = variants.map((variant, idx) => {
+        const color = colors[idx % colors.length];
+        const dataPoints = workerValues.map(worker => {
+          const entry = bench.variants.find(v => v.variant === variant && v.worker === worker);
+          return entry ? entry[metricType] : null;
+        });
+        const dataset = {
+          label: variant,
+          data: dataPoints,
+          backgroundColor: color,
+          borderColor: color.replace('0.8', '1'),
+          borderWidth: 2,
+          tension: 0.25,
+          spanGaps: true,
+          pointRadius: variant.toLowerCase() === 'sequential' ? 3 : 4
+        };
+        if (variant.toLowerCase() === 'sequential') {
+          dataset.borderDash = [6, 4];
+        }
+        return dataset;
+      });
+
+      if (timingChart) {
+        timingChart.destroy();
+      }
+
+      const timingCtx = document.getElementById('benchmarkChart').getContext('2d');
+      timingChart = new Chart(timingCtx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: timingDatasets
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: true, position: 'top' },
+            title: {
+              display: true,
+              text: `${bench.name} ${metricType.replace('_', ' ')} by Workers`,
+              font: { size: 16, weight: 'bold' }
+            },
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const value = ctx.parsed.y;
+                  if (value === null || value === undefined) return null;
+                  return `${ctx.dataset.label}: ${value.toFixed(2)} ms`;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              type: scaleType,
+              beginAtZero: true,
+              title: { display: true, text: `${metricType.replace('_', ' ')} (ms)` }
+            },
+            x: {
+              title: { display: true, text: 'Workers' }
+            }
+          }
+        }
+      });
+
+      const sequentialByWorker = {};
+      bench.variants
+        .filter(v => v.variant === 'sequential' && v.worker !== null && v.worker !== undefined)
+        .forEach(v => {
+          sequentialByWorker[String(v.worker)] = v.real_mean;
+        });
+
+      const baseSequential = sequentialByWorker[String(workerValues[0])] ??
+        (bench.variants.find(v => v.variant === 'sequential')?.real_mean ?? null);
+
+      const speedupData = workerValues.map(worker => {
+        const key = String(worker);
+        const sequentialMean = sequentialByWorker[key] ?? baseSequential;
+        const parallelEntry = bench.variants.find(v => v.variant === 'parallel' && v.worker === worker);
+        if (!parallelEntry || !sequentialMean || parallelEntry.real_mean === 0) {
+          return null;
+        }
+        return sequentialMean / parallelEntry.real_mean;
+      });
+
+      if (speedupChart) {
+        speedupChart.destroy();
+      }
+
+      const speedupCtx = document.getElementById('speedupChart').getContext('2d');
+      speedupChart = new Chart(speedupCtx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Observed speedup (seq / parallel)',
+            data: speedupData,
+            backgroundColor: 'rgba(16, 185, 129, 0.3)',
+            borderColor: '#10b981',
+            borderWidth: 2,
+            tension: 0.25,
+            spanGaps: true,
+            pointRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: true, position: 'top' },
+            title: {
+              display: true,
+              text: `${bench.name} Speedup vs Sequential`,
+              font: { size: 16, weight: 'bold' }
+            },
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const value = ctx.parsed.y;
+                  return value === null || value === undefined ? null : `${value.toFixed(2)}×`;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: { display: true, text: 'Speedup (×)' }
+            },
+            x: {
+              title: { display: true, text: 'Workers' }
+            }
+          }
+        }
+      });
+    }
+
+    function updateVisualization() {
+      const bench = getSelectedBenchmark();
+      updateStats(bench);
+      updateTable(bench);
+      updateCharts(bench);
+    }
+
+    document.getElementById('timestamp').textContent = new Date().toLocaleString();
+    let dataPoints = 0;
+    data.benchmarks.forEach(bench => {
+      bench.variants.forEach(variant => {
+        dataPoints += variant.count;
+      });
+    });
+    document.getElementById('dataPoints').textContent = dataPoints;
+
+    populateBenchmarkOptions();
+    setupTableSorting();
+    document.getElementById('metricType').addEventListener('change', handleControlsChange);
+    document.getElementById('scaleType').addEventListener('change', handleControlsChange);
+    updateVisualization();
+  </script>
+</body>
+</html>
