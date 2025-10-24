@@ -30,6 +30,27 @@
 (define nas-benchmarks
   '((nas-ep "nas/ep.rkt" (--class "S" --workers "4" --repeat "3"))))
 
+(define fib-scaling-benchmarks
+  (for/list ([w (in-range 1 9)])
+    (list
+     (string->symbol (format "fib-workers-~a" w))
+     "mpl/fib.rkt"
+     (list '--n "42"
+           '--threshold "20"
+           '--workers (format "~a" w)
+           '--repeat "3"))))
+
+(define merge-sort-scaling-benchmarks
+  (for/list ([w (in-range 1 9)])
+    (list
+     (string->symbol (format "merge-sort-workers-~a" w))
+     "mpl/merge-sort.rkt"
+     (list '--n "1000000"
+           '--seed "42"
+           '--threshold "2000"
+           '--workers (format "~a" w)
+           '--repeat "3"))))
+
 (define mpl-benchmarks
   '((histogram "mpl/histogram.rkt" (--n "1000000" --buckets "256" --workers "4" --repeat "3"))
     (integer-sort "mpl/integer-sort.rkt" (--n "1000000" --range "100000" --workers "4" --repeat "3"))
@@ -45,6 +66,8 @@
     [(racket) racket-benchmarks]
     [(shootout) shootout-benchmarks]
     [(nas) nas-benchmarks]
+    [(fib-scaling) fib-scaling-benchmarks]
+    [(merge-sort-scaling) merge-sort-scaling-benchmarks]
     [(mpl) mpl-benchmarks]
     [(all) (append racket-benchmarks shootout-benchmarks nas-benchmarks mpl-benchmarks)]
     [else (error 'run-suite "unknown suite: ~a" name)]))

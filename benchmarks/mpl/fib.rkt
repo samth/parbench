@@ -45,7 +45,7 @@
         (25 . 75025) (30 . 832040) (35 . 9227465) (40 . 102334155)))
 
 (module+ main
-  (define n 30)
+  (define n 42)
   (define workers (processor-count))
   (define repeat 3)
   (define log-path #f)
