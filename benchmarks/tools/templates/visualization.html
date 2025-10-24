@@ -714,6 +714,7 @@
 
     populateBenchmarkOptions();
     setupTableSorting();
+    document.getElementById('benchmarkFilter').addEventListener('change', handleBenchmarkChange);
     document.getElementById('metricType').addEventListener('change', handleControlsChange);
     document.getElementById('scaleType').addEventListener('change', handleControlsChange);
     updateVisualization();
