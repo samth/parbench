@@ -8,15 +8,17 @@
          summary?
          summary-name
          summary-variant
+         summary-worker
          summary-count
          summary-real-mean
          summary-real-stddev
          summary-real-min
          summary-real-max
-         summary-cpu-mean)
+         summary-cpu-mean
+         summary-gc-mean)
 
 (struct stat (count sum sumsq min max) #:mutable)
-(struct summary (name variant count real-mean real-stddev real-min real-max cpu-mean) #:transparent)
+(struct summary (name variant worker count real-mean real-stddev real-min real-max cpu-mean gc-mean) #:transparent)
 
 (define (make-stat)
   (stat 0 0.0 0.0 +inf.0 -inf.0))
@@ -76,17 +78,21 @@
     (define name (extract-field 'name fields))
     (define variant (extract-field 'variant fields))
     (define metrics (extract-field 'metrics fields))
+    (define params (extract-field 'params fields))
     (when (and name variant metrics)
       (define real (extract-metric 'real-ms metrics))
       (define cpu (extract-metric 'cpu-ms metrics))
-      (define key (cons name variant))
+      (define gc (extract-metric 'gc-ms metrics))
+      (define workers (and params (extract-metric 'workers params)))
+      (define key (list name variant workers))
       (define agg (hash-ref aggregates key
                              (λ ()
-                               (define fresh (cons (make-stat) (make-stat)))
+                               (define fresh (vector (make-stat) (make-stat) (make-stat)))
                                (hash-set! aggregates key fresh)
                                fresh)))
-      (when real (stat-add! (car agg) real))
-      (when cpu (stat-add! (cdr agg) cpu)))))
+      (when real (stat-add! (vector-ref agg 0) real))
+      (when cpu (stat-add! (vector-ref agg 1) cpu))
+      (when gc (stat-add! (vector-ref agg 2) gc)))))
 
 (define (read-datum in)
   (with-handlers ([exn:fail:read? (λ (_) #f)])
@@ -108,14 +114,17 @@
       [(string=? path "-") (process-port (current-input-port) aggregates)]
       [else (call-with-input-file path (λ (in) (process-port in aggregates)))]))
   (for/list ([(key stats) (in-hash aggregates)])
-    (define name (car key))
-    (define variant (cdr key))
-    (define real-stat (car stats))
-    (define cpu-stat (cdr stats))
-    (summary name variant
+    (define name (first key))
+    (define variant (second key))
+    (define worker (third key))
+    (define real-stat (vector-ref stats 0))
+    (define cpu-stat (vector-ref stats 1))
+    (define gc-stat (vector-ref stats 2))
+    (summary name variant worker
              (stat-count real-stat)
              (stat-mean real-stat)
              (stat-stddev real-stat)
              (safe-min real-stat)
              (safe-max real-stat)
-             (stat-mean cpu-stat))))
+             (stat-mean cpu-stat)
+             (stat-mean gc-stat))))
