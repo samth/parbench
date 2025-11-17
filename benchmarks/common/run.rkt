@@ -16,6 +16,13 @@
          [else (list entry #t)]))]
     [else '()]))
 
+(define (values->result results)
+  (cond
+    [(null? results) (void)]
+    [(null? (cdr results)) (car results)]
+    [(null? (cddr results)) (cons (car results) (cadr results))]
+    [else results]))
+
 (define (run-benchmark thunk
                        #:name name
                        #:variant variant
@@ -26,14 +33,14 @@
                        #:check [check (λ (_ value) value)])
   (define normalized-params (normalize-pairs params))
   (define metadata-lists (normalize-pairs metadata))
-  (define last-result #f)
+  (define last-results #f)
   (for ([iteration (in-range repeat)])
     (collect-garbage)
     (collect-garbage)
     (collect-garbage)
     (define-values (results cpu real gc) (time-apply thunk '()))
-    (define value (if (null? results) #f (car results)))
-    (set! last-result value)
+    (define value (values->result results))
+    (set! last-results results)
     (check iteration value)
     (define event
       `(benchmark
@@ -46,4 +53,7 @@
          (metadata ,@(for/list ([m metadata-lists]) `(,(first m) ,(second m))))
          (status ok)))
     (log-event writer event))
-  last-result)
+  (cond
+    [(not last-results) (void)]
+    [(null? (cdr last-results)) (car last-results)]
+    [else (apply values last-results)]))

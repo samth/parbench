@@ -48,7 +48,8 @@
                             #:log-dir [log-dir "logs"]
                             #:output [output "benchmark-results.html"]
                             #:title [title "Benchmark Results"]
-                            #:run-benchmarks? [run-benchmarks? #t])
+                            #:run-benchmarks? [run-benchmarks? #t]
+                            #:worker-counts [worker-counts #f])
 
   (when run-benchmarks?
     (printf "Running benchmarks...\n")
@@ -59,7 +60,10 @@
                         (list "--log-dir" log-dir)
                         (if config-path
                             (list "--config" config-path)
-                            '())))
+                            '())
+                         (if worker-counts
+                             (list "--worker-counts" worker-counts)
+                             '())))
 
     (define-values (proc out in err)
       (apply subprocess #f #f #f (find-executable-path "racket") args))
@@ -117,12 +121,13 @@
   (define output "benchmark-results.html")
   (define title "Benchmark Results")
   (define run-benchmarks? #t)
+  (define worker-counts #f)
 
   (void
    (command-line
     #:program "visualize.rkt"
     #:once-each
-    [("--suite" "-s") suite "Suite to run: racket, shootout, nas, mpl, or all"
+    [("--suite" "-s") suite "Suite to run: racket, shootout, nas, mpl, toy, or all"
      (set! suite-names (cons suite suite-names))]
     [("--config" "-c") path "Configuration file (S-expression)"
      (set! config-path path)]
@@ -134,6 +139,8 @@
      (set! title t)]
     [("--no-run") "Skip running benchmarks, only generate visualization from existing logs"
      (set! run-benchmarks? #f)]
+    [("--worker-counts") counts "Comma-separated worker counts for parallel variants"
+     (set! worker-counts counts)]
     #:args ()
     (void)))
 
@@ -145,4 +152,5 @@
                      #:log-dir log-dir
                      #:output output
                      #:title title
-                     #:run-benchmarks? run-benchmarks?))
+                     #:run-benchmarks? run-benchmarks?
+                     #:worker-counts worker-counts))

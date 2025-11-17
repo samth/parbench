@@ -4,6 +4,7 @@
          racket/path
          racket/file
          racket/system
+         racket/string
          "common/cli.rkt"
          "common/parallel.rkt")
 
@@ -60,6 +61,14 @@
     (suffix-array "mpl/suffix-array.rkt" (--n "50000" --alphabet "4" --workers "4" --repeat "3"))
     (convex-hull "mpl/convex-hull.rkt" (--n "10000" --distribution "uniform-circle" --workers "4" --repeat "3"))))
 
+(define toy-benchmarks
+  '((fib "mpl/fib.rkt" (--n "38" --threshold "22" --repeat "5"))
+    (bignum-add "mpl/bignum-add.rkt" (--n "1000000" --chunk-size "100000" --repeat "5" --seed "42"))
+    (palindrome "mpl/palindrome.rkt" (--n "20000000" --chunk-size "500000" --repeat "5" --seed "42" --palindrome))
+    (shuffle "mpl/shuffle.rkt" (--n "2000000" --chunk-size "200000" --repeat "5" --seed "42"))
+    (flatten "mpl/flatten.rkt" (--n "20000" --avg-size "200" --repeat "5" --seed "42"))
+    (collect "mpl/collect.rkt" (--n "5000000" --predicate "gt-50" --repeat "5" --seed "42"))))
+
 ;; Get benchmark suite by name
 (define (get-suite name)
   (case (string->symbol name)
@@ -69,6 +78,7 @@
     [(fib-scaling) fib-scaling-benchmarks]
     [(merge-sort-scaling) merge-sort-scaling-benchmarks]
     [(mpl) mpl-benchmarks]
+    [(toy) toy-benchmarks]
     [(all) (append racket-benchmarks shootout-benchmarks nas-benchmarks mpl-benchmarks)]
     [else (error 'run-suite "unknown suite: ~a" name)]))
 
@@ -89,11 +99,36 @@
         (list name path (cadr override))
         bench)))
 
+(define (override-workers args worker)
+  (define worker-str (number->string worker))
+  (define (loop remaining acc replaced?)
+    (cond
+      [(null? remaining)
+       (if replaced?
+           (reverse acc)
+           (reverse (cons worker-str (cons '--workers acc))))]
+      [(and (symbol? (car remaining))
+            (eq? '--workers (car remaining))
+            (pair? (cdr remaining)))
+       (loop (cddr remaining)
+             (cons worker-str (cons '--workers acc))
+             #t)]
+      [else
+       (loop (cdr remaining)
+             (cons (car remaining) acc)
+             replaced?)]))
+  (loop args '() #f))
+
 ;; Run a single benchmark
-(define (run-benchmark name path args log-dir benchmarks-dir)
+(define (run-benchmark name path args log-dir benchmarks-dir worker skip-seq-log?)
   (define full-path (build-path benchmarks-dir path))
-  (define log-file (build-path log-dir (format "~a.sexp" name)))
-  (define all-args (append (map (λ (a) (if (symbol? a) (symbol->string a) a)) args)
+  (define log-suffix (if worker (format "-w~a" worker) ""))
+  (define log-file (build-path log-dir (format "~a~a.sexp" name log-suffix)))
+  (define base-args (if worker (override-workers args worker) args))
+  (define extended-args (if skip-seq-log?
+                            (append base-args (list '--skip-sequential-log))
+                            base-args))
+  (define all-args (append (map (λ (a) (if (symbol? a) (symbol->string a) a)) extended-args)
                            (list "--log" (path->string log-file))))
 
   (printf "Running ~a...\n" name)
@@ -113,7 +148,11 @@
   exit-code)
 
 ;; Run benchmark suite
-(define (run-suite suite-names #:config [config-path #f] #:log-dir [log-dir "logs"] #:parallel? [parallel? #f])
+(define (run-suite suite-names
+                   #:config [config-path #f]
+                   #:log-dir [log-dir "logs"]
+                   #:parallel? [parallel? #f]
+                   #:worker-counts [worker-counts '()])
   (define benchmarks-dir (build-path (current-directory) "benchmarks"))
 
   ;; Ensure log directory exists
@@ -122,33 +161,39 @@
   ;; Load configuration if provided
   (define config (if config-path (load-config config-path) (hash)))
 
-  ;; Gather all benchmarks from requested suites
-  (define all-benchmarks
-    (apply append (map get-suite suite-names)))
+  ;; Gather all benchmarks from requested suites and apply overrides
+  (define base-benchmarks
+    (let ([benchmarks (apply append (map get-suite suite-names))])
+      (if (hash-empty? config)
+          benchmarks
+          (apply-config-overrides benchmarks config))))
 
-  ;; Apply configuration overrides
   (define final-benchmarks
-    (if (hash-empty? config)
-        all-benchmarks
-        (apply-config-overrides all-benchmarks config)))
+    (if (null? worker-counts)
+        (for/list ([bench base-benchmarks])
+          (match-define (list name path args) bench)
+          (list name path args #f #f))
+        (let ([base-worker (first worker-counts)])
+          (for*/list ([bench base-benchmarks]
+                      [worker worker-counts])
+            (match-let ([(list name path args) bench])
+              (list name path args worker (not (equal? worker base-worker))))))))
 
   (printf "Running ~a benchmark(s) from suite(s): ~a\n"
           (length final-benchmarks)
           (string-join suite-names ", "))
   (printf "Logging to: ~a\n\n" log-dir)
 
-  ;; Run benchmarks
+  (define (run-one bench)
+    (match-define (list name path args worker skip?) bench)
+    (run-benchmark name path args log-dir benchmarks-dir worker skip?))
+
   (define results
     (if parallel?
-        ;; Parallel execution using thread pool
         (call-with-thread-pool (processor-count)
           (λ (pool actual-workers)
-            (define tasks
-              (for/list ([bench final-benchmarks])
-                (match-define (list name path args) bench)
-                (thread-pool-submit
-                 pool
-                 (λ () (run-benchmark name path args log-dir benchmarks-dir)))))
+            (define tasks (for/list ([bench final-benchmarks])
+                            (thread-pool-submit pool (λ () (run-one bench)))))
             (define raw-results (thread-pool-wait/collect tasks))
             (for/list ([vals (in-list raw-results)])
               (cond
@@ -156,12 +201,9 @@
                 [(null? (cdr vals)) (car vals)]
                 [else (car vals)])))
           #:max (max 1 (length final-benchmarks)))
-        ;; Sequential execution
         (for/list ([bench final-benchmarks])
-          (match-define (list name path args) bench)
-          (run-benchmark name path args log-dir benchmarks-dir))))
+          (run-one bench))))
 
-  ;; Summary
   (define failures (filter (λ (r) (not (zero? r))) results))
   (printf "\n")
   (printf "========================================\n")
@@ -179,12 +221,13 @@
   (define config-path #f)
   (define log-dir "logs")
   (define parallel? #f)
+  (define worker-counts '())
 
   (void
    (command-line
     #:program "run-suite.rkt"
     #:once-each
-    [("--suite" "-s") suite "Suite to run: racket, shootout, nas, mpl, or all"
+    [("--suite" "-s") suite "Suite to run: racket, shootout, nas, mpl, toy, or all"
      (set! suites (cons suite suites))]
     [("--config" "-c") path "Configuration file (S-expression)"
      (set! config-path path)]
@@ -192,6 +235,11 @@
      (set! log-dir dir)]
     [("--parallel" "-p") "Run benchmarks in parallel (experimental)"
      (set! parallel? #t)]
+    [("--worker-counts") counts "Comma-separated worker counts for parallel variants"
+     (set! worker-counts
+           (for/list ([part (in-list (string-split counts ","))]
+                      #:when (not (string=? "" (string-trim part))))
+             (string->number (string-trim part))))] 
     #:args ()
     (void)))
 
@@ -201,5 +249,6 @@
   (define exit-code (run-suite (reverse suites)
                                 #:config config-path
                                 #:log-dir log-dir
-                                #:parallel? parallel?))
+                                #:parallel? parallel?
+                                #:worker-counts worker-counts))
   (exit exit-code))
