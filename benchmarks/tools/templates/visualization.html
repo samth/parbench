@@ -13,257 +13,214 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      padding: 2rem;
-      color: #0f172a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #ffffff;
+      color: #333333;
+      line-height: 1.5;
+      padding: 24px;
     }
 
     .container {
-      max-width: 1400px;
+      max-width: 1200px;
       margin: 0 auto;
-      background: #fff;
-      border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      min-height: calc(100vh - 4rem);
     }
 
     .header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: #fff;
-      padding: 2.5rem 2rem 2rem;
-      text-align: center;
+      margin-bottom: 32px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #e0e0e0;
     }
 
     .header h1 {
-      font-size: 2.4rem;
-      margin-bottom: 0.4rem;
-      font-weight: 700;
+      font-size: 24px;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 4px;
     }
 
     .header p {
-      font-size: 1rem;
-      opacity: 0.9;
+      font-size: 14px;
+      color: #666666;
     }
 
     .controls {
       display: flex;
+      gap: 16px;
+      margin-bottom: 32px;
       flex-wrap: wrap;
-      gap: 1rem;
-      padding: 1.5rem 2rem;
-      background: #f1f5f9;
-      border-bottom: 1px solid #e2e8f0;
-      align-items: center;
     }
 
     .control-group {
       display: flex;
-      align-items: center;
-      gap: 0.6rem;
+      flex-direction: column;
+      gap: 6px;
     }
 
     .control-group label {
-      font-weight: 600;
-      color: #475569;
-      font-size: 0.9rem;
+      font-size: 13px;
+      font-weight: 500;
+      color: #555555;
     }
 
     .control-group select {
-      padding: 0.45rem 0.9rem;
-      border-radius: 8px;
-      border: 1px solid #cbd5f5;
-      background: #fff;
-      font-size: 0.9rem;
-      color: #1e293b;
-      transition: border-color 0.2s, box-shadow 0.2s;
+      padding: 8px 12px;
+      border: 1px solid #d0d0d0;
+      border-radius: 4px;
+      background: #ffffff;
+      font-size: 14px;
+      color: #333333;
       cursor: pointer;
     }
 
     .control-group select:hover {
-      border-color: #667eea;
+      border-color: #a0a0a0;
     }
 
     .control-group select:focus {
       outline: none;
-      border-color: #4f46e5;
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
-    }
-
-    .content {
-      padding: 2rem;
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 2rem;
-      flex: 1;
-    }
-
-    .chart-container {
-      position: relative;
-      min-height: 420px;
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 14px;
-      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
-      padding: 1.5rem;
+      border-color: #4a90e2;
     }
 
     .section {
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 14px;
-      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
-      padding: 1.5rem 1.75rem 1.75rem;
+      background: #ffffff;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      margin-bottom: 24px;
+      padding: 20px;
     }
 
     .section h2 {
-      font-size: 1.25rem;
-      color: #1e293b;
-      margin-bottom: 1rem;
+      font-size: 18px;
       font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 16px;
     }
 
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 0.75rem;
-      margin-top: 1.5rem;
+      gap: 16px;
+      margin-bottom: 16px;
     }
 
     .stat-card {
-      background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-      padding: 0.85rem 1rem;
-      border-radius: 10px;
-      border: 1px solid #cbd5f5;
-      transition: transform 0.2s, box-shadow 0.2s;
-    }
-
-    .stat-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 12px rgba(15, 23, 42, 0.08);
+      padding: 16px;
+      background: #f8f8f8;
+      border-radius: 4px;
     }
 
     .stat-card h3 {
-      color: #475569;
-      font-size: 0.8rem;
-      margin-bottom: 0.4rem;
+      font-size: 12px;
+      font-weight: 500;
+      color: #666666;
+      margin-bottom: 6px;
       text-transform: uppercase;
-      letter-spacing: 0.4px;
+      letter-spacing: 0.5px;
     }
 
     .stat-card .value {
-      font-size: 1.4rem;
-      font-weight: 700;
-      color: #4f46e5;
+      font-size: 24px;
+      font-weight: 600;
+      color: #1a1a1a;
     }
 
     .stat-card .unit {
-      font-size: 0.85rem;
-      color: #64748b;
-      margin-left: 0.25rem;
+      font-size: 14px;
+      color: #888888;
+      margin-left: 4px;
+      font-weight: 400;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 400px;
     }
 
     .details-table {
       width: 100%;
       border-collapse: collapse;
-      background: white;
-      border-radius: 10px;
-      overflow: hidden;
-      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+      font-size: 14px;
     }
 
     .details-table th {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 1rem;
+      padding: 12px;
       text-align: left;
       font-weight: 600;
-      text-transform: uppercase;
-      font-size: 0.85rem;
-      letter-spacing: 0.5px;
-      position: relative;
-    }
-
-    .details-table th[data-column] {
+      color: #555555;
+      border-bottom: 2px solid #e0e0e0;
+      font-size: 13px;
       cursor: pointer;
+      user-select: none;
     }
 
-    .details-table th[data-column]::after {
-      content: '';
-      position: absolute;
-      right: 0.75rem;
-      top: 50%;
-      transform: translateY(-50%);
-      border: 4px solid transparent;
+    .details-table th:hover {
+      background: #f8f8f8;
     }
 
     .details-table th[data-sort="asc"]::after {
-      border-bottom-color: white;
+      content: ' ▲';
+      color: #4a90e2;
+      font-size: 10px;
     }
 
     .details-table th[data-sort="desc"]::after {
-      border-top-color: white;
-    }
-
-    .details-table th[data-sort="none"]::after {
-      display: none;
+      content: ' ▼';
+      color: #4a90e2;
+      font-size: 10px;
     }
 
     .details-table td {
-      padding: 1rem;
-      border-bottom: 1px solid #e2e8f0;
-      font-family: 'JetBrains Mono', 'Courier New', monospace;
-      font-size: 0.95rem;
-      color: #1e293b;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f0f0f0;
+      color: #333333;
     }
 
     .details-table tbody tr:hover {
-      background: #f8fafc;
-    }
-
-    .details-table tbody tr:last-child td {
-      border-bottom: none;
+      background: #f8f8f8;
     }
 
     .benchmark-name {
-      font-weight: 600;
-      color: #1e293b;
+      font-weight: 500;
     }
 
     .variant-name {
       display: inline-block;
-      padding: 0.3rem 0.8rem;
-      background: #ede9fe;
-      color: #5b21b6;
-      border-radius: 999px;
-      font-size: 0.85rem;
-      font-weight: 600;
+      padding: 4px 8px;
+      background: #e8f0fe;
+      color: #1967d2;
+      border-radius: 3px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .metric-value {
+      font-variant-numeric: tabular-nums;
     }
 
     footer {
+      margin-top: 32px;
+      padding-top: 16px;
+      border-top: 1px solid #e0e0e0;
       text-align: center;
-      padding: 1.5rem;
-      background: #f1f5f9;
-      color: #64748b;
-      font-size: 0.9rem;
-      border-top: 1px solid #e2e8f0;
+      font-size: 13px;
+      color: #888888;
     }
 
     @media (max-width: 768px) {
       body {
-        padding: 1rem;
+        padding: 16px;
       }
 
       .controls {
         flex-direction: column;
-        align-items: stretch;
       }
 
-      .control-group {
-        justify-content: space-between;
+      .chart-container {
+        height: 300px;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -272,7 +229,7 @@
   <div class="container">
     <header class="header">
       <h1>@@TITLE@@</h1>
-      <p>Interactive Benchmark Scaling Dashboard</p>
+      <p>Benchmark Results</p>
     </header>
 
     <section class="controls">
@@ -299,22 +256,27 @@
       </div>
     </section>
 
-    <main class="content">
-      <section class="section" id="timing-section">
-        <h2>Timing by Workers</h2>
+    <main>
+      <section class="section">
+        <h2>Statistics</h2>
+        <div class="stats-grid" id="statsGrid"></div>
+      </section>
+
+      <section class="section">
+        <h2>Execution Time by Worker Count</h2>
         <div class="chart-container">
           <canvas id="benchmarkChart"></canvas>
         </div>
       </section>
 
-      <section class="section" id="speedup-section">
-        <h2>Speedup vs Sequential Baseline</h2>
+      <section class="section">
+        <h2>Speedup</h2>
         <div class="chart-container">
           <canvas id="speedupChart"></canvas>
         </div>
       </section>
 
-      <section class="section" id="details-section">
+      <section class="section">
         <h2>Detailed Results</h2>
         <table class="details-table" id="detailsTable">
           <thead>
@@ -324,21 +286,20 @@
               <th data-column="worker">Workers</th>
               <th data-column="count">Count</th>
               <th data-column="real_mean">Real Mean (ms)</th>
-              <th data-column="real_stddev">Real StdDev (ms)</th>
-              <th data-column="real_min">Real Min (ms)</th>
-              <th data-column="real_max">Real Max (ms)</th>
+              <th data-column="real_stddev">StdDev (ms)</th>
+              <th data-column="real_min">Min (ms)</th>
+              <th data-column="real_max">Max (ms)</th>
               <th data-column="cpu_mean">CPU Mean (ms)</th>
               <th data-column="gc_mean">GC Mean (ms)</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
-        <div class="stats-grid" id="statsGrid"></div>
       </section>
     </main>
 
     <footer>
-      Generated on <span id="timestamp"></span> · Data points: <span id="dataPoints"></span>
+      Generated on <span id="timestamp"></span> · <span id="dataPoints"></span> data points
     </footer>
   </div>
 
@@ -348,6 +309,10 @@
     let speedupChart = null;
     let tableSort = { column: 'worker', direction: 'asc' };
     let sortingInitialized = false;
+
+    // Chart.js defaults
+    Chart.defaults.color = '#666666';
+    Chart.defaults.borderColor = '#e0e0e0';
 
     function populateBenchmarkOptions() {
       const select = document.getElementById('benchmarkFilter');
@@ -473,13 +438,19 @@
         ? (variants.reduce((acc, variant) => acc + variant.real_mean, 0) / variants.length).toFixed(2)
         : 0;
 
+      const sequential = variants.find(v => v.variant === 'sequential');
+      const parallelVariants = variants.filter(v => v.variant === 'parallel');
+      const maxSpeedup = sequential && parallelVariants.length > 0
+        ? Math.max(...parallelVariants.map(p => sequential.real_mean / p.real_mean)).toFixed(2)
+        : 'N/A';
+
       statsGrid.innerHTML = `
         <div class="stat-card">
           <h3>Benchmark</h3>
           <div class="value">${bench.name}</div>
         </div>
         <div class="stat-card">
-          <h3>Total Variants</h3>
+          <h3>Variants</h3>
           <div class="value">${totalVariants}</div>
         </div>
         <div class="stat-card">
@@ -487,8 +458,12 @@
           <div class="value">${totalRuns}</div>
         </div>
         <div class="stat-card">
-          <h3>Avg Real Time</h3>
+          <h3>Avg Time</h3>
           <div class="value">${avgRealTime}<span class="unit">ms</span></div>
+        </div>
+        <div class="stat-card">
+          <h3>Max Speedup</h3>
+          <div class="value">${maxSpeedup}${maxSpeedup !== 'N/A' ? '<span class="unit">×</span>' : ''}</div>
         </div>
       `;
     }
@@ -547,15 +522,15 @@
           : String(a).localeCompare(String(b))
       ));
 
-      const labels = workerValues.map(w => `w=${w}`);
+      const labels = workerValues.map(w => `${w}`);
       const variants = Array.from(new Set(bench.variants.map(v => v.variant)));
       const colors = [
-        'rgba(102, 126, 234, 0.8)',
-        'rgba(118, 75, 162, 0.8)',
-        'rgba(237, 100, 166, 0.8)',
-        'rgba(255, 154, 102, 0.8)',
-        'rgba(52, 211, 153, 0.8)',
-        'rgba(59, 130, 246, 0.8)'
+        '#4a90e2',
+        '#50c878',
+        '#f5a623',
+        '#bd10e0',
+        '#e25555',
+        '#7ed321'
       ];
 
       const timingDatasets = variants.map((variant, idx) => {
@@ -564,20 +539,17 @@
           const entry = bench.variants.find(v => v.variant === variant && v.worker === worker);
           return entry ? entry[metricType] : null;
         });
-        const dataset = {
+        return {
           label: variant,
           data: dataPoints,
-          backgroundColor: color,
-          borderColor: color.replace('0.8', '1'),
+          backgroundColor: color + '20',
+          borderColor: color,
           borderWidth: 2,
-          tension: 0.25,
+          tension: 0.2,
           spanGaps: true,
-          pointRadius: variant.toLowerCase() === 'sequential' ? 3 : 4
+          pointRadius: 4,
+          pointHoverRadius: 6
         };
-        if (variant.toLowerCase() === 'sequential') {
-          dataset.borderDash = [6, 4];
-        }
-        return dataset;
       });
 
       if (timingChart) {
@@ -595,30 +567,28 @@
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: true, position: 'top' },
-            title: {
+            legend: {
               display: true,
-              text: `${bench.name} ${metricType.replace('_', ' ')} by Workers`,
-              font: { size: 16, weight: 'bold' }
+              position: 'top'
             },
-            tooltip: {
-              callbacks: {
-                label: ctx => {
-                  const value = ctx.parsed.y;
-                  if (value === null || value === undefined) return null;
-                  return `${ctx.dataset.label}: ${value.toFixed(2)} ms`;
-                }
-              }
+            title: {
+              display: false
             }
           },
           scales: {
             y: {
               type: scaleType,
               beginAtZero: true,
-              title: { display: true, text: `${metricType.replace('_', ' ')} (ms)` }
+              title: {
+                display: true,
+                text: 'Time (ms)'
+              }
             },
             x: {
-              title: { display: true, text: 'Workers' }
+              title: {
+                display: true,
+                text: 'Workers'
+              }
             }
           }
         }
@@ -644,6 +614,8 @@
         return sequentialMean / parallelEntry.real_mean;
       });
 
+      const idealSpeedup = workerValues.map(w => w);
+
       if (speedupChart) {
         speedupChart.destroy();
       }
@@ -653,43 +625,55 @@
         type: 'line',
         data: {
           labels,
-          datasets: [{
-            label: 'Observed speedup (seq / parallel)',
-            data: speedupData,
-            backgroundColor: 'rgba(16, 185, 129, 0.3)',
-            borderColor: '#10b981',
-            borderWidth: 2,
-            tension: 0.25,
-            spanGaps: true,
-            pointRadius: 4
-          }]
+          datasets: [
+            {
+              label: 'Observed',
+              data: speedupData,
+              backgroundColor: '#4a90e220',
+              borderColor: '#4a90e2',
+              borderWidth: 2,
+              tension: 0.2,
+              spanGaps: true,
+              pointRadius: 4,
+              pointHoverRadius: 6
+            },
+            {
+              label: 'Ideal Linear',
+              data: idealSpeedup,
+              backgroundColor: 'transparent',
+              borderColor: '#cccccc',
+              borderWidth: 1,
+              borderDash: [5, 5],
+              tension: 0,
+              pointRadius: 0
+            }
+          ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: true, position: 'top' },
-            title: {
+            legend: {
               display: true,
-              text: `${bench.name} Speedup vs Sequential`,
-              font: { size: 16, weight: 'bold' }
+              position: 'top'
             },
-            tooltip: {
-              callbacks: {
-                label: ctx => {
-                  const value = ctx.parsed.y;
-                  return value === null || value === undefined ? null : `${value.toFixed(2)}×`;
-                }
-              }
+            title: {
+              display: false
             }
           },
           scales: {
             y: {
               beginAtZero: true,
-              title: { display: true, text: 'Speedup (×)' }
+              title: {
+                display: true,
+                text: 'Speedup (×)'
+              }
             },
             x: {
-              title: { display: true, text: 'Workers' }
+              title: {
+                display: true,
+                text: 'Workers'
+              }
             }
           }
         }
