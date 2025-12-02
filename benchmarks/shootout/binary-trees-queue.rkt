@@ -2,7 +2,8 @@
 
 (require racket/match
          racket/require
-         racket/system
+         racket/async-channel
+         racket/list
          (for-syntax racket/base)
          (filtered-in (lambda (name) (regexp-replace #rx"unsafe-" name ""))
                       racket/unsafe/ops)
@@ -61,37 +62,57 @@
         (cons 'results results)
         (list 'long-lived max-depth long-lived-check)))
 
-;; Parallel implementation using parallel threads (Racket 9.0+)
+;; Parallel implementation using queue-based task distribution (SBCL-style)
 (define (binary-trees-parallel max-depth workers)
   (define stretch-depth (fx+ max-depth 1))
   (define stretch-check (check (make 0 stretch-depth)))
   (define long-lived-tree (make 0 max-depth))
 
-  ;; Compute results for each depth in parallel using thread pool
-  (define len (fx+ max-depth 1))
-  (define output (make-vector len #f))
+  ;; Create task queue with depth values
+  (define task-queue (make-async-channel))
+  (define output-queue (make-async-channel))
 
-  ;; Create thread pool and spawn threads for each depth
+  ;; Enqueue all depth tasks
+  (for ([d (in-range 4 (fx+ max-depth 1) 2)])
+    (async-channel-put task-queue d))
+
+  ;; Send termination signals (one per worker)
+  (for ([_ (in-range workers)])
+    (async-channel-put task-queue #f))
+
+  ;; Worker function: dequeue tasks and process them
+  (define (worker)
+    (let loop ()
+      (define depth (async-channel-get task-queue))
+      (when depth
+        (define iterations (fxlshift 1 (fx+ (fx- max-depth depth) min-depth)))
+        (define sum-check
+          (for/fold ([c 0]) ([i (in-range iterations)])
+            (fx+ c (fx+ (check (make i depth))
+                        (check (make (fx- 0 i) depth))))))
+        (async-channel-put output-queue
+                          (list depth (fx* 2 iterations) sum-check))
+        (loop))))
+
+  ;; Create thread pool and spawn worker threads
   (define pool (make-parallel-thread-pool workers))
   (define thds
-    (for/list ([d (in-range 4 len 2)])
-      (thread #:pool pool #:keep 'results
-        (lambda ()
-          (define iterations (fxlshift 1 (fx+ (fx- max-depth d) min-depth)))
-          (define sum-check
-            (for/fold ([c 0]) ([i (in-range iterations)])
-              (fx+ c (fx+ (check (make i d))
-                          (check (make (fx- 0 i) d))))))
-          (vector-set! output d (list (fx* 2 iterations) d sum-check))))))
+    (for/list ([_ (in-range workers)])
+      (thread #:pool pool #:keep 'results worker)))
 
-  ;; Wait for all threads
+  ;; Wait for all threads to complete
   (for-each thread-wait thds)
   (parallel-thread-pool-close pool)
 
-  ;; Extract results
+  ;; Collect and sort results by depth
+  (define result-count (quotient (+ (- max-depth 4) 2) 2))
   (define results
-    (for/list ([e (in-vector output)] #:when e)
-      e))
+    (sort (for/list ([_ (in-range result-count)])
+            (define r (async-channel-get output-queue))
+            (match r
+              [(list d iters check-sum)
+               (list iters d check-sum)]))
+          < #:key cadr))
 
   (define long-lived-check (check long-lived-tree))
   (list (list 'stretch stretch-depth stretch-check)
@@ -114,7 +135,7 @@
 
   (void
    (command-line
-    #:program "binary-trees.rkt"
+    #:program "binary-trees-queue.rkt"
     #:once-each
     [("--max-depth") arg "Maximum tree depth"
      (set! max-depth (parse-positive-integer arg 'binary-trees))]
@@ -133,7 +154,7 @@
   (define sequential
     (run-benchmark
      (λ () (binary-trees max-depth #:workers 1))
-     #:name 'binary-trees
+     #:name 'binary-trees-queue
      #:variant 'sequential
      #:repeat repeat
      #:log-writer writer
@@ -142,7 +163,7 @@
 
   (run-benchmark
    (λ () (binary-trees max-depth #:workers workers))
-   #:name 'binary-trees
+   #:name 'binary-trees-queue
    #:variant 'parallel
    #:repeat repeat
    #:log-writer writer
