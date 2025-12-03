@@ -53,9 +53,11 @@
             (define pattern (car entry))
             (define rx (cdr entry))
             (thread #:pool pool
+                    #:keep 'results
                     (λ ()
                       (vector-set! results idx (cons pattern (count-matches rx)))))))
         (for ([t (in-list threads)]) (thread-wait t))
+        (parallel-thread-pool-close pool)
         (vector->list results))))
 
 (define (apply-substitutions dna)

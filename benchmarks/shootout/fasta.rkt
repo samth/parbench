@@ -57,8 +57,9 @@
        (for/list ([rg (in-list ranges)])
          (define start (car rg))
          (define end (cdr rg))
-         (thread-pool-submit
-          pool
+         (thread
+          #:pool pool
+          #:keep 'results
           (λ ()
             (define len (- end start))
             (define chunk (make-string len))
@@ -66,7 +67,7 @@
               (define ch (string-ref base (modulo (+ start i) base-length)))
                (string-set! chunk i ch))
              chunk))))
-     (define substrings (thread-pool-wait/collect tasks))
+     (define substrings (map thread-wait tasks))
      (define result (make-string total-length))
      (for ([rg (in-list ranges)]
            [chunk (in-list substrings)])
@@ -106,8 +107,9 @@
                      [idx (in-naturals)])
             (define start-state (vector-ref states idx))
             (define len (- (cdr rg) (car rg)))
-            (thread-pool-submit
-             pool
+            (thread
+             #:pool pool
+             #:keep 'results
              (λ ()
                (define chunk (make-string len))
                (define local-state start-state)
@@ -116,7 +118,7 @@
                  (define ch (cdf-select (/ local-state lcg-modulus) cdf fallback))
                  (string-set! chunk i ch))
              chunk))))
-        (define substrings (thread-pool-wait/collect tasks))
+        (define substrings (map thread-wait tasks))
         (define result (make-string total-length))
         (for ([rg (in-list ranges)]
               [chunk (in-list substrings)])
@@ -175,32 +177,30 @@
 (define (fasta n #:workers [workers 1])
   (if (<= workers 1)
       (fasta-sequential n)
-      (call-with-thread-pool workers
-        (λ (pool actual-workers)
-          (call-with-values
-              make-sink
-            (λ (emit-byte emit-string emit-substring emit-newline snapshot)
-              (define effective-workers (max 1 actual-workers))
-              ;; Repeat sequence
-              (emit-string ">ONE Homo sapiens alu")
-              (emit-newline)
-              (define repeat-str
-                (parallel-repeat-sequence (* 2 n) alu-sequence pool effective-workers))
-              (emit-lines repeat-str emit-substring emit-newline)
-              ;; Random sequences (IUB then Homo sapiens) sharing RNG state
-              (define rng-state 42)
-              (emit-string ">TWO IUB ambiguity codes")
-              (emit-newline)
-              (define-values (iub-str state-after-iub)
-                (parallel-random-sequence (* 3 n) iub-frequencies rng-state pool effective-workers))
-              (emit-lines iub-str emit-substring emit-newline)
-              (emit-string ">THREE Homo sapiens frequency")
-              (emit-newline)
-              (define-values (human-str _final-state)
-                (parallel-random-sequence (* 5 n) homo-sapiens-frequencies state-after-iub pool effective-workers))
-              (emit-lines human-str emit-substring emit-newline)
-              (snapshot))))
-        #:max (max 1 (* 3 workers)))))
+      (let ([pool (make-parallel-thread-pool workers)])
+        (call-with-values
+            make-sink
+          (λ (emit-byte emit-string emit-substring emit-newline snapshot)
+            ;; Repeat sequence
+            (emit-string ">ONE Homo sapiens alu")
+            (emit-newline)
+            (define repeat-str
+              (parallel-repeat-sequence (* 2 n) alu-sequence pool workers))
+            (emit-lines repeat-str emit-substring emit-newline)
+            ;; Random sequences (IUB then Homo sapiens) sharing RNG state
+            (define rng-state 42)
+            (emit-string ">TWO IUB ambiguity codes")
+            (emit-newline)
+            (define-values (iub-str state-after-iub)
+              (parallel-random-sequence (* 3 n) iub-frequencies rng-state pool workers))
+            (emit-lines iub-str emit-substring emit-newline)
+            (emit-string ">THREE Homo sapiens frequency")
+            (emit-newline)
+            (define-values (human-str _final-state)
+              (parallel-random-sequence (* 5 n) homo-sapiens-frequencies state-after-iub pool workers))
+            (emit-lines human-str emit-substring emit-newline)
+            (parallel-thread-pool-close pool)
+            (snapshot))))))
 
 (module+ main
   (define n 250000)

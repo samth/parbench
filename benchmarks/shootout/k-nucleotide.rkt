@@ -45,9 +45,11 @@
                          [idx (in-naturals)])
                 (thread
                  #:pool pool
+                 #:keep 'results
                  (λ ()
                    (vector-set! results idx (cons k (frequency-table dna k))))))])
         (for ([t (in-list threads)]) (thread-wait t))
+        (parallel-thread-pool-close pool)
         (for/hash ([entry (in-vector results)])
           (values (car entry) (cdr entry))))))
 
