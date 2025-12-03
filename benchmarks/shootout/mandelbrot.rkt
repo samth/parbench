@@ -11,8 +11,7 @@
                   unsafe-fxand)
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide mandelbrot)
 
@@ -76,10 +75,19 @@
   (define bpr (ceiling (/ N 8)))
   (define bitmap (make-bytes (* N bpr)))
 
-  ;; Use parallel abstraction to compute rows
-  (for/parallel workers ([y N])
-    (define row-bytes (compute-row y N Crs))
-    (bytes-copy! bitmap (fx* y bpr) row-bytes))
+  ;; Compute rows in parallel using thread pool
+  (define pool (make-parallel-thread-pool workers))
+  (define chunk-size (quotient (+ N workers -1) workers))
+  (define thds
+    (for/list ([start (in-range 0 N chunk-size)])
+      (define end (min N (+ start chunk-size)))
+      (thread #:pool pool #:keep 'results
+        (lambda ()
+          (for ([y (in-range start end)])
+            (define row-bytes (compute-row y N Crs))
+            (bytes-copy! bitmap (fx* y bpr) row-bytes))))))
+  (for-each thread-wait thds)
+  (parallel-thread-pool-close pool)
 
   bitmap)
 

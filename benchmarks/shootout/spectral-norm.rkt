@@ -4,8 +4,7 @@
          racket/flonum
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide spectral-norm)
 
@@ -15,26 +14,65 @@
   (fl/ 1.0 (fl+ (fl* (fl* (fx->fl ij) (fx->fl (fx+ ij 1))) 0.5)
                 (fx->fl (fx+ i 1)))))
 
-;; Apply A to vector x, store in y
-(define (Av x y N workers)
-  (for/parallel workers ([i N])
+;; Apply A to vector x, store in y (sequential)
+(define (Av-sequential x y N)
+  (for ([i (in-range N)])
     (flvector-set!
      y i
      (for/fold ([a 0.0]) ([j (in-range N)])
        (fl+ a (fl* (flvector-ref x j) (A i j)))))))
 
-;; Apply A^T to vector x, store in y
-(define (Atv x y N workers)
-  (for/parallel workers ([i N])
+;; Apply A to vector x, store in y (parallel)
+(define (Av-parallel x y N workers)
+  (define pool (make-parallel-thread-pool workers))
+  (define chunk-size (quotient (+ N workers -1) workers))
+  (define thds
+    (for/list ([start (in-range 0 N chunk-size)])
+      (define end (min N (+ start chunk-size)))
+      (thread #:pool pool #:keep 'results
+        (lambda ()
+          (for ([i (in-range start end)])
+            (flvector-set!
+             y i
+             (for/fold ([a 0.0]) ([j (in-range N)])
+               (fl+ a (fl* (flvector-ref x j) (A i j))))))))))
+  (for-each thread-wait thds)
+  (parallel-thread-pool-close pool))
+
+;; Apply A^T to vector x, store in y (sequential)
+(define (Atv-sequential x y N)
+  (for ([i (in-range N)])
     (flvector-set!
      y i
      (for/fold ([a 0.0]) ([j (in-range N)])
        (fl+ a (fl* (flvector-ref x j) (A j i)))))))
 
+;; Apply A^T to vector x, store in y (parallel)
+(define (Atv-parallel x y N workers)
+  (define pool (make-parallel-thread-pool workers))
+  (define chunk-size (quotient (+ N workers -1) workers))
+  (define thds
+    (for/list ([start (in-range 0 N chunk-size)])
+      (define end (min N (+ start chunk-size)))
+      (thread #:pool pool #:keep 'results
+        (lambda ()
+          (for ([i (in-range start end)])
+            (flvector-set!
+             y i
+             (for/fold ([a 0.0]) ([j (in-range N)])
+               (fl+ a (fl* (flvector-ref x j) (A j i))))))))))
+  (for-each thread-wait thds)
+  (parallel-thread-pool-close pool))
+
 ;; Apply A^T * A to vector x
 (define (AtAv x y t N workers)
-  (Av x t N workers)
-  (Atv t y N workers))
+  (if (= workers 1)
+      (begin
+        (Av-sequential x t N)
+        (Atv-sequential t y N))
+      (begin
+        (Av-parallel x t N workers)
+        (Atv-parallel t y N workers))))
 
 (define (spectral-norm n #:workers [workers 1] #:iterations [iterations 10])
   (define worker-count (max 1 workers))

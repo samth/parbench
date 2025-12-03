@@ -2,7 +2,6 @@
 
 (require racket/list
          racket/unsafe/ops
-         "../common/parallel.rkt"
          "../common/cli.rkt"
          "../common/run.rkt"
          "../common/logging.rkt")
@@ -98,25 +97,23 @@
   (define total (factorial n))
   (define worker-count (max 1 (min workers total)))
   (define chunk-size (max 1 (quotient (+ total worker-count -1) worker-count)))
-  (call-with-thread-pool workers
-    (λ (pool actual-workers)
-      (define tasks
-        (thread-pool-wait/collect
-         (for/list ([start (in-range 0 total chunk-size)])
-           (define remaining (- total start))
-           (define count (min remaining chunk-size))
-           (thread-pool-submit
-            pool
-            (λ () (fannkuch-range n start count))))))
-      (define max-flips 0)
-      (define checksum 0)
-      (for ([vals (in-list tasks)])
-        (define flips (first vals))
-        (define partial-sum (second vals))
-        (set! max-flips (max max-flips flips))
-        (set! checksum (+ checksum partial-sum)))
-      (values max-flips checksum))
-    #:max worker-count))
+  (define pool (make-parallel-thread-pool worker-count))
+  (define thds
+    (for/list ([start (in-range 0 total chunk-size)])
+      (define remaining (- total start))
+      (define count (min remaining chunk-size))
+      (thread #:pool pool #:keep 'results
+        (λ () (call-with-values (λ () (fannkuch-range n start count)) list)))))
+  (define results (map thread-wait thds))
+  (parallel-thread-pool-close pool)
+  (define max-flips 0)
+  (define checksum 0)
+  (for ([vals (in-list results)])
+    (define flips (first vals))
+    (define partial-sum (second vals))
+    (set! max-flips (max max-flips flips))
+    (set! checksum (+ checksum partial-sum)))
+  (values max-flips checksum))
 
 (define (fannkuch-redux n #:workers [workers 1])
   (if (= workers 1)

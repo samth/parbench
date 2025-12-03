@@ -1,7 +1,6 @@
 #lang racket
 
 (require racket/match
-         "../common/parallel.rkt"
          "../common/cli.rkt"
          "../common/run.rkt"
          "../common/logging.rkt")
@@ -19,9 +18,8 @@
      (case c2 [(yellow) 'red] [(red) 'yellow] [else c1])]))
 
 ;; Meeting place coordinator
-(define (meeting-place pool meeting-ch total-meetings creature-count)
+(define (meeting-place meeting-ch total-meetings creature-count)
   (thread
-   #:pool pool
    (λ ()
      (let loop ([remaining total-meetings]
                 [waiting #f]
@@ -46,9 +44,8 @@
           (loop (sub1 remaining) #f faded)])))))
 
 ;; Individual creature
-(define (creature pool color meeting-ch result-ch)
+(define (creature color meeting-ch result-ch)
   (thread
-   #:pool pool
    (λ ()
      (define ch (make-channel))
      (define name (gensym))
@@ -66,21 +63,18 @@
   (define creature-count (length colors))
   (define meeting-ch (make-channel))
   (define result-ch (make-channel))
-  (call-with-thread-pool (max 1 creature-count)
-    (λ (pool _actual)
-      (define coordinator (meeting-place pool meeting-ch n creature-count))
-      (define creatures
-        (for/list ([color colors])
-          (creature pool color meeting-ch result-ch)))
-      (define results
-        (for/list ([_ colors])
-          (channel-get result-ch)))
-      (for ([t creatures]) (thread-wait t))
-      (thread-wait coordinator)
-      (list creature-count
-            (apply + (map car results))
-            (apply + (map cdr results))))
-    #:max (max 1 (add1 creature-count))))
+  (define coordinator (meeting-place meeting-ch n creature-count))
+  (define creatures
+    (for/list ([color colors])
+      (creature color meeting-ch result-ch)))
+  (define results
+    (for/list ([_ colors])
+      (channel-get result-ch)))
+  (for ([t creatures]) (thread-wait t))
+  (thread-wait coordinator)
+  (list creature-count
+        (apply + (map car results))
+        (apply + (map cdr results))))
 
 (define (chameneos n #:colors [colors '(blue red yellow)])
   (run-chameneos n colors))
