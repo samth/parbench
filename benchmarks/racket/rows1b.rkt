@@ -5,8 +5,7 @@
          racket/math
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide rows1b-sequential
          rows1b-parallel
@@ -121,22 +120,21 @@
   (define chunk (or chunk-size
                     (max 1 (ceiling (/ rows (* worker-count 2))))))
   (define ranges (chunk-ranges rows chunk))
+  (define pool (make-parallel-thread-pool worker-count))
+
+  (define threads
+    (for/list ([rg (in-list ranges)])
+      (define start (car rg))
+      (define end (cdr rg))
+      (thread (lambda () (process-range start end))
+              #:pool pool #:keep 'results)))
+
   (define table (make-hash))
-  (define results
-    (call-with-thread-pool workers
-      (λ (pool actual-workers)
-        (thread-pool-wait/collect
-         (for/list ([rg (in-list ranges)])
-           (define start (car rg))
-           (define end (cdr rg))
-           (thread-pool-submit pool (λ () (process-range start end))))))
-      #:max (length ranges)))
-  (for ([result-values (in-list results)])
-    (define chunk-table
-      (cond
-        [(and (list? result-values) (pair? result-values)) (first result-values)]
-        [else result-values]))
+  (for ([t (in-list threads)])
+    (define chunk-table (thread-wait t))
     (merge-tables! table chunk-table))
+
+  (parallel-thread-pool-close pool)
   (finalize-table table))
 
 (define (rows1b-results=? a b)
@@ -157,56 +155,63 @@
   (define chunk-size #f)
   (define repeat 1)
   (define log-path #f)
+  (define skip-sequential #f)
 
   (void
    (command-line
     #:program "rows1b.rkt"
     #:once-each
-    [("--rows") arg "Number of generated rows to process."
+    [("--rows") arg "Number of generated rows to process"
      (set! rows (parse-positive-integer arg 'rows1b))]
-    [("--workers") arg "Worker count for parallel variant."
+    [("--workers") arg "Parallel thread count"
      (set! workers (parse-positive-integer arg 'rows1b))]
-    [("--chunk-size") arg "Chunk size (rows) processed per worker."
+    [("--chunk-size") arg "Chunk size (rows) processed per worker"
      (set! chunk-size (parse-positive-integer arg 'rows1b))]
-    [("--repeat") arg "Number of benchmark repetitions."
+    [("--repeat") arg "Benchmark repetitions"
      (set! repeat (parse-positive-integer arg 'rows1b))]
-    [("--log") arg "Optional path for S-expression benchmark log."
-     (set! log-path arg)]))
+    [("--log") arg "Optional S-expression log path"
+     (set! log-path arg)]
+    [("--skip-sequential") "Skip sequential baseline"
+     (set! skip-sequential #t)]))
 
   (define writer (make-log-writer log-path))
   (define metadata (system-metadata))
-  (define params-base (list (list 'rows rows)
-                            (list 'workers workers)
-                            (list 'chunk-size (or chunk-size 'auto))))
+  (define params (list (list 'rows rows)
+                       (list 'workers workers)
+                       (list 'chunk-size (or chunk-size 'auto))))
 
-  (define sequential-reference
-    (let ([holder #f])
+  (define sequential-result #f)
+
+  (unless skip-sequential
+    (set! sequential-result
+          (run-benchmark
+           (lambda () (rows1b-sequential rows))
+           #:name 'rows1b
+           #:variant 'sequential
+           #:repeat repeat
+           #:log-writer writer
+           #:params params
+           #:metadata metadata)))
+
+  (if sequential-result
       (run-benchmark
-       (λ () (rows1b-sequential rows))
+       (lambda () (rows1b-parallel rows #:workers workers #:chunk-size chunk-size))
        #:name 'rows1b
-       #:variant 'sequential
+       #:variant 'parallel
        #:repeat repeat
        #:log-writer writer
-       #:params params-base
+       #:params params
        #:metadata metadata
-       #:check (λ (iteration result)
-                 (cond
-                   [(zero? iteration) (set! holder result)]
-                   [else
-                    (unless (rows1b-results=? result holder)
-                      (error 'rows1b "sequential result changed"))])))
-      holder))
-
-  (run-benchmark
-   (λ () (rows1b-parallel rows #:workers workers #:chunk-size chunk-size))
-   #:name 'rows1b
-   #:variant 'parallel
-   #:repeat repeat
-   #:log-writer writer
-   #:params params-base
-   #:metadata metadata
-   #:check (λ (_ result)
-             (unless (rows1b-results=? result sequential-reference)
-               (error 'rows1b "parallel result mismatch"))))
+       #:check (lambda (_ result)
+                 (unless (rows1b-results=? result sequential-result)
+                   (error 'rows1b "parallel result mismatch"))))
+      (run-benchmark
+       (lambda () (rows1b-parallel rows #:workers workers #:chunk-size chunk-size))
+       #:name 'rows1b
+       #:variant 'parallel
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata))
 
   (close-log-writer writer))

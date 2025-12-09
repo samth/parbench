@@ -3,8 +3,7 @@
 (require racket/place
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide run-richards-sequential
          run-richards-parallel
@@ -346,96 +345,90 @@
                           (* EXPECTED-HOLD-COUNT iterations)))))
     (error 'run-richards "unexpected result: ~a" res)))
 
-(define (run-richards-sequential #:iterations [iterations 1] #:verify? [verify? #t])
+(define (run-richards-sequential #:iterations [iterations 1])
   (define-values (q h)
     (for/fold ([q 0] [h 0]) ([i (in-range iterations)])
       (define res (richards-run-once))
       (values (+ q (richards-result-queue-count res))
               (+ h (richards-result-hold-count res)))))
-  (define result (richards-result q h))
-  (when verify?
-    (verify-result result iterations))
-  result)
-
-(define (sum-results results)
-  (for/fold ([q 0] [h 0]) ([res (in-list results)])
-    (values (+ q (richards-result-queue-count res))
-            (+ h (richards-result-hold-count res)))))
+  (richards-result q h))
 
 (define (run-richards-parallel #:iterations [iterations 1]
-                               #:workers [workers (processor-count)]
-                               #:verify? [verify? #t])
+                               #:workers [workers (processor-count)])
   (cond
     [(<= iterations 0) (richards-result 0 0)]
     [else
      (define worker-count (max 1 (min workers iterations)))
      (define chunk (max 1 (quotient (+ iterations worker-count -1) worker-count)))
-     (define tasks
-       (call-with-thread-pool workers
-         (λ (pool actual-workers)
-           (thread-pool-wait/collect
-            (for/list ([start (in-range 0 iterations chunk)])
-              (define remaining (- iterations start))
-              (define count (min remaining chunk))
-              (thread-pool-submit
-               pool
-               (λ () (run-richards-sequential #:iterations count #:verify? #f))))))
-         #:max (ceiling (/ iterations chunk))))
+     (define pool (make-parallel-thread-pool worker-count))
+
+     (define threads
+       (for/list ([start (in-range 0 iterations chunk)])
+         (define remaining (- iterations start))
+         (define count (min remaining chunk))
+         (thread (lambda () (run-richards-sequential #:iterations count))
+                 #:pool pool #:keep 'results)))
+
      (define-values (q h)
-       (sum-results
-        (for/list ([values (in-list tasks)])
-          (cond
-            [(and (list? values) (pair? values)) (first values)]
-            [else values]))))
-     (define result (richards-result q h))
-     (when verify?
-       (verify-result result iterations))
-     result]))
+       (for/fold ([q 0] [h 0]) ([t (in-list threads)])
+         (define res (thread-wait t))
+         (values (+ q (richards-result-queue-count res))
+                 (+ h (richards-result-hold-count res)))))
+
+     (parallel-thread-pool-close pool)
+     (richards-result q h)]))
 
 ;; ---------------- Benchmark Harness ----------------
 
 (module+ main
   (define iterations 20)
-  (define worker-counts '(1 2 4 8))
+  (define workers (processor-count))
+  (define repeat 1)
   (define log-path #f)
-  (define repeat-count 1)
+  (define skip-sequential #f)
 
   (void
    (command-line
    #:program "richards.rkt"
    #:once-each
-   [("--iterations" "-n") arg "Benchmark iterations per run (default 20)."
+   [("--iterations" "-n") arg "Benchmark iterations per run"
     (set! iterations (parse-positive-integer arg 'richards))]
-   [("--workers") arg "Comma-separated worker counts for the parallel sweep."
-    (set! worker-counts (parse-positive-list arg 'richards))]
-   [("--repeat") arg "Benchmark repetitions per variant."
-    (set! repeat-count (parse-positive-integer arg 'richards))]
-   [("--log") arg "Optional path for S-expression benchmark log."
-    (set! log-path arg)]))
+   [("--workers") arg "Parallel thread count"
+    (set! workers (parse-positive-integer arg 'richards))]
+   [("--repeat") arg "Benchmark repetitions"
+    (set! repeat (parse-positive-integer arg 'richards))]
+   [("--log") arg "Optional S-expression log path"
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential baseline"
+    (set! skip-sequential #t)]))
 
   (define writer (make-log-writer log-path))
   (define metadata (system-metadata))
-  (define params-base (list (list 'iterations iterations)))
+  (define params (list (list 'iterations iterations)
+                       (list 'workers workers)))
+
+  (define sequential-result #f)
+
+  (unless skip-sequential
+    (set! sequential-result
+          (run-benchmark
+           (lambda () (run-richards-sequential #:iterations iterations))
+           #:name 'richards
+           #:variant 'sequential
+           #:repeat repeat
+           #:log-writer writer
+           #:params params
+           #:metadata metadata
+           #:check (lambda (_ res) (verify-result res iterations)))))
 
   (run-benchmark
-   (λ () (run-richards-sequential #:iterations iterations))
+   (lambda () (run-richards-parallel #:iterations iterations #:workers workers))
    #:name 'richards
-   #:variant 'sequential
-   #:repeat repeat-count
+   #:variant 'parallel
+   #:repeat repeat
    #:log-writer writer
-   #:params params-base
+   #:params params
    #:metadata metadata
-   #:check (λ (_ res) (verify-result res iterations)))
-
-  (for ([w (in-list worker-counts)])
-    (run-benchmark
-     (λ () (run-richards-parallel #:iterations iterations #:workers w))
-     #:name 'richards
-     #:variant 'parallel
-     #:repeat repeat-count
-     #:log-writer writer
-     #:params (append params-base (list (list 'workers w)))
-     #:metadata metadata
-     #:check (λ (_ res) (verify-result res iterations))))
+   #:check (lambda (_ res) (verify-result res iterations)))
 
   (close-log-writer writer))

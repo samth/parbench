@@ -1,21 +1,17 @@
 #lang racket
-(require racket/place          ; processor-count
+
+(require racket/place
          racket/match
-         racket/string
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide vector-boyer-moore-majority/sequential
          vector-boyer-moore-majority/parallel
          make-majority-vector
          equal/heavy)
 
-;; -------- Tunable size --------
-(define N 1000000) ; change here
-
-;; -------- Boyer–Moore (vector-only, multiple values) --------
+;; -------- Boyer-Moore (vector-only, multiple values) --------
 
 (define (bm-merge c1 n1 c2 n2 equal)
   (cond [(and c1 c2 (equal c1 c2)) (values c1 (+ n1 n2))]
@@ -51,11 +47,16 @@
           [(null? (cdr xs)) (reverse (cons (list (car xs)) acc))]
           [else             (loop (cddr xs) (cons (list (car xs) (cadr xs)) acc))])))
 
+;; -------- Sequential baseline --------
+
+(define (vector-boyer-moore-majority/sequential v #:equal [equal equal?])
+  (define-values (c n) (bm-scan-vec v 0 (vector-length v) equal))
+  (bm-verify-vec v c equal))
+
 ;; -------- Parallel scan + parallel tree-merge (thread #:pool) --------
 
 (define (vector-boyer-moore-majority/parallel v
           #:workers [workers (processor-count)]
-          #:pool    [pool    #f]
           #:equal   [equal   equal?])
   (unless (vector? v) (error 'vector-boyer-moore-majority/parallel "vector required"))
   (define n (vector-length v))
@@ -63,13 +64,13 @@
     [(zero? n) #f]
     [else
      (define k (max 1 (min workers n)))
-     (define p (or pool (make-parallel-thread-pool k)))
+     (define p (make-parallel-thread-pool k))
 
      ;; leaf scans
      (define scans
        (for/list ([rg (in-list (chunk-ranges n k))])
          (define start (car rg)) (define end (cdr rg))
-         (thread (λ () (bm-scan-vec v start end equal))
+         (thread (lambda () (bm-scan-vec v start end equal))
                  #:pool p #:keep 'results)))
 
      ;; parallel tree merge
@@ -82,7 +83,7 @@
             (for/list ([pr (in-list (pair-up threads))])
               (match pr
                 [(list t1 t2)
-                 (thread (λ ()
+                 (thread (lambda ()
                            (define-values (c1 n1) (thread-wait t1))
                            (define-values (c2 n2) (thread-wait t2))
                            (bm-merge c1 n1 c2 n2 equal))
@@ -91,14 +92,8 @@
           (tree-merge next-level)]))
 
      (define-values (cand cnt) (tree-merge scans))
-     (unless pool (parallel-thread-pool-close p))
+     (parallel-thread-pool-close p)
      (bm-verify-vec v cand equal)]))
-
-;; -------- Sequential baseline --------
-
-(define (vector-boyer-moore-majority/sequential v #:equal [equal equal?])
-  (define-values (c n) (bm-scan-vec v 0 (vector-length v) equal))
-  (bm-verify-vec v c equal))
 
 ;; -------- Work generator and heavy equality --------
 
@@ -129,103 +124,88 @@
 ;; -------- Benchmark --------
 
 (module+ main
-  (define benchmark-sizes '(10000 50000 200000 1000000))
-  (define worker-counts '(1 2 4 8))
-  (define target-work N)
+  (define n 1000000)
+  (define workers (processor-count))
+  (define repeat 1)
+  (define log-path #f)
+  (define skip-sequential #f)
   (define majority-value 7)
   (define majority-probability 0.6)
   (define majority-kinds 64)
   (define rng-seed 424242)
-  (define log-path #f)
-  (define repeat-override #f)
 
   (void
    (command-line
    #:program "bmbench.rkt"
    #:once-each
-   [("--sizes") arg "Comma-separated vector lengths (e.g., 10000,50000)."
-    (set! benchmark-sizes (parse-positive-list arg 'bmbench))]
-   [("--workers") arg "Comma-separated worker counts for benchmarking."
-    (set! worker-counts (parse-positive-list arg 'bmbench))]
-   [("--target-work") arg "Approximate total element work per size (default mirrors N)."
-    (set! target-work (parse-positive-integer arg 'bmbench))]
-   [("--majority") arg "Majority value inserted into generated vectors."
+   [("--n") arg "Vector length"
+    (set! n (parse-positive-integer arg 'bmbench))]
+   [("--workers") arg "Parallel thread count"
+    (set! workers (parse-positive-integer arg 'bmbench))]
+   [("--repeat") arg "Benchmark repetitions"
+    (set! repeat (parse-positive-integer arg 'bmbench))]
+   [("--log") arg "Optional S-expression log path"
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential baseline"
+    (set! skip-sequential #t)]
+   [("--majority") arg "Majority value inserted into generated vectors"
     (set! majority-value (parse-integer arg 'bmbench))]
-   [("--probability") arg "Majority probability between 0 and 1 (default 0.6)."
+   [("--probability") arg "Majority probability between 0 and 1"
     (set! majority-probability (parse-probability arg 'bmbench))]
-   [("--kinds") arg "Distinct value kinds allocated to non-majority elements."
+   [("--kinds") arg "Distinct value kinds allocated to non-majority elements"
     (set! majority-kinds (parse-positive-integer arg 'bmbench))]
-   [("--seed") arg "Random seed integer, or 'none' to leave RNG state untouched."
-    (set! rng-seed (maybe-parse-seed arg 'bmbench))]
-   [("--repeat") arg "Override per-size benchmark repeat count."
-    (set! repeat-override (parse-positive-integer arg 'bmbench))]
-   [("--log") arg "Optional path for S-expression benchmark log."
-    (set! log-path arg)]))
+   [("--seed") arg "Random seed integer, or 'none' to leave RNG state untouched"
+    (set! rng-seed (maybe-parse-seed arg 'bmbench))]))
 
   (when rng-seed (random-seed rng-seed))
 
   (define writer (make-log-writer log-path))
   (define metadata (system-metadata))
-
-  (define (iterations-for len)
-    (or repeat-override
-        (max 1 (exact-round (/ target-work len)))))
-
-  (define (params-for len repeats)
-    (list (list 'size len)
-          (list 'repeats repeats)
-          (list 'majority majority-value)
-          (list 'probability majority-probability)
-          (list 'kinds majority-kinds)))
+  (define vec (make-majority-vector n majority-value
+                                    #:p majority-probability
+                                    #:kinds majority-kinds))
+  (define params (list (list 'n n)
+                       (list 'majority majority-value)
+                       (list 'probability majority-probability)
+                       (list 'kinds majority-kinds)
+                       (list 'workers workers)))
 
   (define sequential-result #f)
 
-  (for ([len (in-list benchmark-sizes)]
-        [index (in-naturals)])
-    (define repeats (iterations-for len))
-    (define vec (make-majority-vector len majority-value
-                                      #:p majority-probability
-                                      #:kinds majority-kinds))
-    (when (> index 0) (newline))
-    (displayln (format "=== vector length ~a, repeat x~a ===" len repeats))
-
+  (unless skip-sequential
     (set! sequential-result
           (run-benchmark
-           (λ () (vector-boyer-moore-majority/sequential vec #:equal equal/heavy))
+           (lambda () (vector-boyer-moore-majority/sequential vec #:equal equal/heavy))
            #:name 'bmbench
            #:variant 'sequential
-           #:repeat repeats
+           #:repeat repeat
            #:log-writer writer
-           #:params (params-for len repeats)
-           #:metadata metadata
-           #:check
-           (let ([first #f])
-             (λ (iteration result)
-               (if (zero? iteration)
-                   (set! first result)
-                   (unless (equal? result first)
-                     (error 'bmbench "sequential result changed (size ~a)" len)))))))
+           #:params params
+           #:metadata metadata)))
 
-    (for ([w (in-list worker-counts)])
-      (define pool (make-parallel-thread-pool w))
-      (define params
-        (append (params-for len repeats)
-                (list (list 'workers w))))
+  (if sequential-result
       (run-benchmark
-       (λ () (vector-boyer-moore-majority/parallel vec
-                                                   #:pool pool
-                                                   #:equal equal/heavy))
+       (lambda () (vector-boyer-moore-majority/parallel vec
+                                                        #:workers workers
+                                                        #:equal equal/heavy))
        #:name 'bmbench
        #:variant 'parallel
-       #:repeat repeats
+       #:repeat repeat
        #:log-writer writer
        #:params params
        #:metadata metadata
-       #:check (λ (_ result)
+       #:check (lambda (_ result)
                  (unless (equal? result sequential-result)
-                   (error 'bmbench
-                          "parallel result mismatch (size ~a workers ~a)"
-                          len w))))
-      (parallel-thread-pool-close pool)))
+                   (error 'bmbench "parallel result mismatch"))))
+      (run-benchmark
+       (lambda () (vector-boyer-moore-majority/parallel vec
+                                                        #:workers workers
+                                                        #:equal equal/heavy))
+       #:name 'bmbench
+       #:variant 'parallel
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata))
 
   (close-log-writer writer))

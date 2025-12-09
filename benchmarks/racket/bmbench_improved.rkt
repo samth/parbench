@@ -2,21 +2,16 @@
 
 (require racket/place
          racket/match
-         racket/string
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide vector-boyer-moore-majority/sequential
-         vector-boyer-moore-majority/parallel/improved
+         vector-boyer-moore-majority/parallel
          make-majority-vector
          equal/heavy)
 
-;; -------- Tunable size (default for CLI) --------
-(define DEFAULT-N 1000000)
-
-;; -------- Boyer–Moore Helpers --------
+;; -------- Boyer-Moore Helpers --------
 
 (define (bm-merge c1 n1 c2 n2 equal)
   (cond
@@ -63,14 +58,14 @@
   (define max-chunks (max effective-workers (min n (* effective-workers (max 1 chunk-multiplier)))))
   (min (max effective-workers raw-count) max-chunks))
 
-(define (vector-boyer-moore-majority/parallel/improved v
+(define (vector-boyer-moore-majority/parallel v
           #:workers [workers (processor-count)]
           #:equal [equal equal?]
           #:threshold [threshold 50000]
           #:chunk-size [chunk-size #f]
           #:chunk-multiplier [chunk-multiplier 2])
   (unless (vector? v)
-    (error 'vector-boyer-moore-majority/parallel/improved "vector required"))
+    (error 'vector-boyer-moore-majority/parallel "vector required"))
   (define n (vector-length v))
   (cond
     [(zero? n) #f]
@@ -79,28 +74,28 @@
     [else
      (define chunk-count (compute-chunk-count n workers chunk-size chunk-multiplier threshold))
      (define ranges (chunk-ranges n chunk-count))
+     (define pool (make-parallel-thread-pool (min workers chunk-count)))
+
+     (define results
+       (for/list ([rg (in-list ranges)])
+         (define start (car rg))
+         (define end (cdr rg))
+         (thread (lambda () (bm-scan-vec v start end equal))
+                 #:pool pool #:keep 'results)))
+
      (define-values (cand cnt)
-       (call-with-thread-pool workers
-         (λ (pool actual-workers)
-           (define results
-             (thread-pool-wait/collect
-              (for/list ([rg (in-list ranges)])
-                (define start (car rg))
-                (define end (cdr rg))
-                (thread-pool-submit pool (λ () (bm-scan-vec v start end equal))))))
-           (let loop ([vals results] [cand #f] [cnt 0])
-             (cond
-               [(null? vals) (values cand cnt)]
-               [else
-                (define pair (car vals))
-                (define c (first pair))
-                (define n (second pair))
-                (define-values (next-c next-n)
-                  (if cand
-                      (bm-merge cand cnt c n equal)
-                      (values c n)))
-                (loop (cdr vals) next-c next-n)])))
-         #:max chunk-count))
+       (let loop ([threads results] [cand #f] [cnt 0])
+         (cond
+           [(null? threads) (values cand cnt)]
+           [else
+            (define-values (c n) (thread-wait (car threads)))
+            (define-values (next-c next-n)
+              (if cand
+                  (bm-merge cand cnt c n equal)
+                  (values c n)))
+            (loop (cdr threads) next-c next-n)])))
+
+     (parallel-thread-pool-close pool)
      (bm-verify-vec v cand equal)]))
 
 ;; -------- Work generator and heavy equality --------
@@ -135,9 +130,11 @@
 ;; -------- Benchmark Harness --------
 
 (module+ main
-  (define benchmark-sizes '(10000 50000 200000 1000000))
-  (define worker-counts '(1 2 4 8))
-  (define target-work DEFAULT-N)
+  (define n 1000000)
+  (define workers (processor-count))
+  (define repeat 1)
+  (define log-path #f)
+  (define skip-sequential #f)
   (define majority-value 7)
   (define majority-probability 0.6)
   (define majority-kinds 64)
@@ -145,110 +142,98 @@
   (define threshold 50000)
   (define chunk-size #f)
   (define chunk-multiplier 2)
-  (define log-path #f)
-  (define repeat-override #f)
 
   (void
    (command-line
    #:program "bmbench_improved.rkt"
    #:once-each
-   [("--sizes") arg "Comma-separated vector lengths (e.g., 10000,50000)."
-    (set! benchmark-sizes (parse-positive-list arg 'bmbench-improved))]
-   [("--workers") arg "Comma-separated worker counts for benchmarking."
-    (set! worker-counts (parse-positive-list arg 'bmbench-improved))]
-   [("--target-work") arg "Approximate element work per size (default mirrors DEFAULT-N)."
-    (set! target-work (parse-positive-integer arg 'bmbench-improved))]
-   [("--majority") arg "Majority value inserted into generated vectors."
+   [("--n") arg "Vector length"
+    (set! n (parse-positive-integer arg 'bmbench-improved))]
+   [("--workers") arg "Parallel thread count"
+    (set! workers (parse-positive-integer arg 'bmbench-improved))]
+   [("--repeat") arg "Benchmark repetitions"
+    (set! repeat (parse-positive-integer arg 'bmbench-improved))]
+   [("--log") arg "Optional S-expression log path"
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential baseline"
+    (set! skip-sequential #t)]
+   [("--majority") arg "Majority value inserted into generated vectors"
     (set! majority-value (parse-integer arg 'bmbench-improved))]
-   [("--probability") arg "Majority probability between 0 and 1 (default 0.6)."
+   [("--probability") arg "Majority probability between 0 and 1"
     (set! majority-probability (parse-probability arg 'bmbench-improved))]
-   [("--kinds") arg "Distinct kinds allocated to non-majority elements."
+   [("--kinds") arg "Distinct kinds allocated to non-majority elements"
     (set! majority-kinds (parse-positive-integer arg 'bmbench-improved))]
-   [("--seed") arg "Random seed integer, or 'none' to leave RNG state untouched."
+   [("--seed") arg "Random seed integer, or 'none' to leave RNG state untouched"
     (set! rng-seed (maybe-parse-seed arg 'bmbench-improved))]
-   [("--threshold") arg "Vector length threshold below which runs stay sequential."
+   [("--threshold") arg "Vector length threshold below which runs stay sequential"
     (set! threshold (parse-positive-integer arg 'bmbench-improved))]
-   [("--chunk-size") arg "Preferred chunk size per worker (default auto)."
+   [("--chunk-size") arg "Preferred chunk size per worker (default auto)"
     (set! chunk-size (if (or (string-ci=? arg "auto") (string-ci=? arg "none"))
                          #f
                          (parse-positive-integer arg 'bmbench-improved)))]
-   [("--chunk-multiplier") arg "Upper bound multiplier for chunks relative to workers."
-    (set! chunk-multiplier (parse-positive-integer arg 'bmbench-improved))]
-   [("--repeat") arg "Override per-size benchmark repeat count."
-    (set! repeat-override (parse-positive-integer arg 'bmbench-improved))]
-   [("--log") arg "Optional path for S-expression benchmark log."
-    (set! log-path arg)]))
+   [("--chunk-multiplier") arg "Upper bound multiplier for chunks relative to workers"
+    (set! chunk-multiplier (parse-positive-integer arg 'bmbench-improved))]))
 
-  (let ()
-    (when rng-seed (random-seed rng-seed))
+  (when rng-seed (random-seed rng-seed))
 
-    (define writer (make-log-writer log-path))
-    (define metadata (system-metadata))
+  (define writer (make-log-writer log-path))
+  (define metadata (system-metadata))
+  (define vec (make-majority-vector n majority-value
+                                    #:p majority-probability
+                                    #:kinds majority-kinds))
+  (define params (list (list 'n n)
+                       (list 'majority majority-value)
+                       (list 'probability majority-probability)
+                       (list 'kinds majority-kinds)
+                       (list 'threshold threshold)
+                       (list 'chunk-size (or chunk-size 'auto))
+                       (list 'chunk-multiplier chunk-multiplier)
+                       (list 'workers workers)))
 
-    (define (iterations-for len)
-      (or repeat-override
-          (max 1 (exact-round (/ target-work len)))))
+  (define sequential-result #f)
 
-    (define (base-params len repeats)
-      (list (list 'size len)
-            (list 'repeats repeats)
-            (list 'majority majority-value)
-            (list 'probability majority-probability)
-            (list 'kinds majority-kinds)
-            (list 'threshold threshold)
-            (list 'chunk-size (or chunk-size 'auto))
-            (list 'chunk-multiplier chunk-multiplier)))
+  (unless skip-sequential
+    (set! sequential-result
+          (run-benchmark
+           (lambda () (vector-boyer-moore-majority/sequential vec #:equal equal/heavy))
+           #:name 'bmbench-improved
+           #:variant 'sequential
+           #:repeat repeat
+           #:log-writer writer
+           #:params params
+           #:metadata metadata)))
 
-    (define sequential-result #f)
+  (if sequential-result
+      (run-benchmark
+       (lambda () (vector-boyer-moore-majority/parallel
+                   vec
+                   #:workers workers
+                   #:equal equal/heavy
+                   #:threshold threshold
+                   #:chunk-size chunk-size
+                   #:chunk-multiplier chunk-multiplier))
+       #:name 'bmbench-improved
+       #:variant 'parallel
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata
+       #:check (lambda (_ result)
+                 (unless (equal? result sequential-result)
+                   (error 'bmbench-improved "parallel result mismatch"))))
+      (run-benchmark
+       (lambda () (vector-boyer-moore-majority/parallel
+                   vec
+                   #:workers workers
+                   #:equal equal/heavy
+                   #:threshold threshold
+                   #:chunk-size chunk-size
+                   #:chunk-multiplier chunk-multiplier))
+       #:name 'bmbench-improved
+       #:variant 'parallel
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata))
 
-    (for ([len (in-list benchmark-sizes)]
-          [index (in-naturals)])
-      (define repeats (iterations-for len))
-      (define vec (make-majority-vector len majority-value
-                                        #:p majority-probability
-                                        #:kinds majority-kinds))
-      (when (> index 0) (newline))
-      (displayln (format "=== vector length ~a, repeat x~a ===" len repeats))
-
-      (set! sequential-result
-            (run-benchmark
-             (λ () (vector-boyer-moore-majority/sequential vec #:equal equal/heavy))
-             #:name 'bmbench-improved
-             #:variant 'sequential
-             #:repeat repeats
-             #:log-writer writer
-             #:params (base-params len repeats)
-             #:metadata metadata
-             #:check (let ([first #f])
-                       (λ (iteration result)
-                         (if (zero? iteration)
-                             (set! first result)
-                             (unless (equal? result first)
-                               (error 'bmbench-improved
-                                      "sequential result changed (size ~a)" len)))))))
-
-      (for ([w (in-list worker-counts)])
-        (define params
-          (append (base-params len repeats)
-                  (list (list 'workers w))))
-        (run-benchmark
-         (λ () (vector-boyer-moore-majority/parallel/improved
-                vec
-                #:workers w
-                #:equal equal/heavy
-                #:threshold threshold
-                #:chunk-size chunk-size
-                #:chunk-multiplier chunk-multiplier))
-         #:name 'bmbench-improved
-         #:variant 'parallel-improved
-         #:repeat repeats
-         #:log-writer writer
-         #:params params
-         #:metadata metadata
-         #:check (λ (_ result)
-                   (unless (equal? result sequential-result)
-                     (error 'bmbench-improved
-                            "parallel result mismatch (size ~a workers ~a)"
-                            len w))))))
-
-    (close-log-writer writer)))
+  (close-log-writer writer))
