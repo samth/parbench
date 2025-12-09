@@ -987,6 +987,19 @@
             mode: 'nearest',
             intersect: true,
           },
+          onClick: (event, elements) => {
+            if (elements.length > 0) {
+              const element = elements[0];
+              const benchmarkName = overallSpeedupChart.data.labels[element.index];
+              // Update the benchmark selector
+              const selector = document.getElementById('benchmarkSelector');
+              if (selector) {
+                selector.value = benchmarkName;
+                // Trigger change event to update the visualization
+                updateVisualization();
+              }
+            }
+          },
           plugins: {
             annotation: {
               annotations: lineAnnotations
