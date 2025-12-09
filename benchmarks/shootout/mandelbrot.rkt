@@ -92,9 +92,10 @@
   bitmap)
 
 (require future-visualizer)
+(require future-visualizer/trace)
 
 (define (mandelbrot N #:workers [workers 1])
-  (visualize-futures
+  (trace-futures
    (if (= workers 1)
        (mandelbrot-sequential N)
        (mandelbrot-parallel N workers))))
