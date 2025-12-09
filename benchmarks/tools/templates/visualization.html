@@ -377,6 +377,7 @@
     let timingChart = null;
     let speedupChart = null;
     let overallSpeedupChart = null;
+    let overallSpeedupChartClickHandler = null;
     let tableSort = { column: 'worker', direction: 'asc' };
     let sortingInitialized = false;
 
@@ -811,6 +812,151 @@
       });
     }
 
+    function getRelativeYFromEvent(evt, chart) {
+      if (!chart || !chart.canvas) {
+        return null;
+      }
+
+      const canvas = chart.canvas;
+      const cssHeight = canvas.clientHeight || canvas.offsetHeight || canvas.height;
+      const scaleY = cssHeight ? (canvas.height / cssHeight) : 1;
+
+      if (typeof evt.offsetY === 'number' && evt.target === canvas) {
+        return evt.offsetY * scaleY;
+      }
+
+      const rect = canvas.getBoundingClientRect();
+      let clientY = null;
+
+      if (typeof evt.clientY === 'number') {
+        clientY = evt.clientY;
+      } else if (evt.touches && evt.touches.length > 0) {
+        clientY = evt.touches[0].clientY;
+      }
+
+      if (clientY === null) {
+        return null;
+      }
+
+      const cssY = clientY - rect.top;
+      const rectHeight = rect.height || cssHeight || 1;
+      const ratio = canvas.height / rectHeight;
+      return cssY * ratio;
+    }
+
+    function findBenchmarkFromAxis(evt, chart) {
+      if (!chart || !chart.scales || !chart.scales.y) {
+        return null;
+      }
+
+      const yScale = chart.scales.y;
+      const labels = chart.data?.labels || [];
+      if (labels.length === 0) {
+        return null;
+      }
+
+      const relativeY = getRelativeYFromEvent(evt, chart);
+      if (!Number.isFinite(relativeY)) {
+        return null;
+      }
+
+      try {
+        if (typeof yScale.getValueForPixel === 'function') {
+          const valueFromScale = yScale.getValueForPixel(relativeY);
+          if (typeof valueFromScale === 'string' && labels.includes(valueFromScale)) {
+            return valueFromScale;
+          }
+          if (Number.isFinite(valueFromScale)) {
+            const idx = Math.round(valueFromScale);
+            if (idx >= 0 && idx < labels.length) {
+              return labels[idx];
+            }
+          }
+          if (valueFromScale && typeof valueFromScale === 'object') {
+            const candidate = valueFromScale.label ?? valueFromScale.value;
+            if (typeof candidate === 'string' && labels.includes(candidate)) {
+              return candidate;
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('getValueForPixel failed:', error);
+      }
+
+      const canvas = chart.canvas || null;
+      const top = typeof yScale.top === 'number' ? yScale.top : 0;
+      const bottom = typeof yScale.bottom === 'number'
+        ? yScale.bottom
+        : ((typeof chart.height === 'number' && !Number.isNaN(chart.height))
+          ? chart.height
+          : (canvas && typeof canvas.height === 'number' ? canvas.height : 0));
+      const span = Math.abs(bottom - top);
+      const safeSpan = Number.isFinite(span) && span > 0 ? span : labels.length;
+      const nominalBand = safeSpan / Math.max(1, labels.length);
+      const tolerance = Math.max(6, nominalBand / 2);
+
+      let closestLabel = null;
+      let closestDistance = Infinity;
+
+      for (let i = 0; i < labels.length; i++) {
+        let pixelPos = Number.NaN;
+        if (typeof yScale.getPixelForTick === 'function') {
+          pixelPos = yScale.getPixelForTick(i);
+        }
+        if (!Number.isFinite(pixelPos) && typeof yScale.getPixelForValue === 'function') {
+          pixelPos = yScale.getPixelForValue(labels[i]);
+        }
+        if (!Number.isFinite(pixelPos)) {
+          continue;
+        }
+        const distance = Math.abs(relativeY - pixelPos);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestLabel = labels[i];
+        }
+      }
+
+      if (closestLabel && (closestDistance <= tolerance || !Number.isFinite(tolerance))) {
+        return closestLabel;
+      }
+
+      return null;
+    }
+
+    function handleOverallSpeedupChartClick(evt) {
+      if (!overallSpeedupChart) {
+        return;
+      }
+
+      let benchmarkName = null;
+      try {
+        const elements = overallSpeedupChart.getElementsAtEventForMode(
+          evt,
+          'nearest',
+          { axis: 'y', intersect: true },
+          false
+        );
+        if (elements && elements.length > 0) {
+          const element = elements[0];
+          benchmarkName = overallSpeedupChart.data.labels[element.index];
+        }
+      } catch (error) {
+        console.warn('getElementsAtEventForMode failed:', error);
+      }
+
+      if (!benchmarkName) {
+        benchmarkName = findBenchmarkFromAxis(evt, overallSpeedupChart);
+      }
+
+      if (benchmarkName) {
+        const selector = document.getElementById('benchmarkFilter');
+        if (selector && selector.value !== benchmarkName) {
+          selector.value = benchmarkName;
+          updateVisualization();
+        }
+      }
+    }
+
     function createOverallSpeedupChart() {
       console.log('=== createOverallSpeedupChart called ===');
       console.log('data.benchmarks:', data.benchmarks);
@@ -930,6 +1076,17 @@
         });
       });
 
+      const canvas = document.getElementById('overallSpeedupChart');
+      if (!canvas) {
+        console.error('overallSpeedupChart canvas element not found');
+        return;
+      }
+
+      if (overallSpeedupChartClickHandler) {
+        canvas.removeEventListener('click', overallSpeedupChartClickHandler);
+        overallSpeedupChartClickHandler = null;
+      }
+
       if (overallSpeedupChart) {
         overallSpeedupChart.destroy();
       }
@@ -951,7 +1108,7 @@
       console.log('Labels array:', labelArray);
       console.log('Labels count:', labelArray.length);
 
-      const ctx = document.getElementById('overallSpeedupChart').getContext('2d');
+      const ctx = canvas.getContext('2d');
       console.log('Canvas context:', ctx);
 
       const chartData = {
@@ -988,41 +1145,6 @@
           interaction: {
             mode: 'nearest',
             intersect: true,
-          },
-          onClick: (event, elements) => {
-            let benchmarkName = null;
-
-            // First try to get from clicked element
-            if (elements.length > 0) {
-              const element = elements[0];
-              benchmarkName = overallSpeedupChart.data.labels[element.index];
-            } else {
-              // If no element clicked, check if click is on y-axis label area
-              const yScale = overallSpeedupChart.scales.y;
-              if (yScale && event.y !== undefined) {
-                // Find which category the click y-position corresponds to
-                const labels = overallSpeedupChart.data.labels;
-                for (let i = 0; i < labels.length; i++) {
-                  const pixelPos = yScale.getPixelForValue(i);
-                  const categoryHeight = yScale.height / labels.length;
-                  // Check if click is within this category's band
-                  if (Math.abs(event.y - pixelPos) < categoryHeight / 2) {
-                    benchmarkName = labels[i];
-                    break;
-                  }
-                }
-              }
-            }
-
-            // Update the benchmark selector if we found a benchmark
-            if (benchmarkName) {
-              const selector = document.getElementById('benchmarkFilter');
-              if (selector) {
-                selector.value = benchmarkName;
-                // Trigger change event to update the visualization
-                updateVisualization();
-              }
-            }
           },
           plugins: {
             annotation: {
@@ -1105,6 +1227,9 @@
           }
         }
       });
+
+      overallSpeedupChartClickHandler = (evt) => handleOverallSpeedupChartClick(evt);
+      canvas.addEventListener('click', overallSpeedupChartClickHandler);
       console.log('Chart created successfully!', overallSpeedupChart);
 
       // Log internal chart state
