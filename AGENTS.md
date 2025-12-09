@@ -1,7 +1,5 @@
 # Repository Guidelines
 
-> Assumes an already configured Racket toolchain and an experienced Racket audience.
-
 ## Project Structure & Module Organization
 The codebase is intentionally compact: `bmbench.rkt` at the repository root contains the Boyer–Moore majority benchmark plus helper routines for vector generation and parallel merging. A `module+ main` block drives the benchmark run; keep reusable functions above it so they remain importable. If you introduce support code (e.g., profiling tools or reusable fixtures), place them in new modules under `src/` and add a matching `tests/` subtree for clarity.
 

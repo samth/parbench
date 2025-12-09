@@ -1,7 +1,5 @@
 # MPL Benchmark Suite - Complete Implementation Plan (ACCURATE)
 
-> Targeted at experienced Racket contributors with an existing Racket setup.
-
 ## 🎯 Current Status (2025-10-21)
 
 **27/38 MPL benchmarks implemented (71.1%)** | **Phase 4 & 5 COMPLETE ✅** | **Phase 3 PARTIAL ✅** | **Phase 1 MAJOR PROGRESS ✅**

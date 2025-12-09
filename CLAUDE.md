@@ -2,8 +2,6 @@
 
 This document provides guidance for AI coding assistants (Claude, GitHub Copilot, etc.) working on this Racket parallel benchmarking repository.
 
-> Assumes the reader already has a working Racket installation and is familiar with advanced Racket tooling.
-
 ## Repository Overview
 
 This is a **comprehensive parallel benchmarking suite** for Racket, containing 19+ benchmarks across 4 categories:

@@ -2,8 +2,6 @@
 
 A comprehensive, reproducible benchmarking harness for evaluating parallel performance in Racket. This suite unifies existing Racket benchmarks with external parallel benchmark suites, providing consistent CLI interfaces, S-expression logging, and comparative reporting.
 
-> This documentation assumes you already have a fully working Racket (8.x or newer) toolchain on your `PATH` and are comfortable with `racket`/`raco` workflows.
-
 ## Overview
 
 This repository provides:
