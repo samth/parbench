@@ -1,5 +1,7 @@
 # Benchmark Harness Guide
 
+> Written for experienced Racket users with a working `racket`/`raco` environment.
+
 This repository currently provides a small set of Racket benchmarks with a shared command-line interface and S-expression logging. Additional suites (shootout, NAS, MPL) will plug into the same structure in later stages.
 
 ## Layout

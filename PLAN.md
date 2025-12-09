@@ -1,5 +1,7 @@
 # Parallel Benchmark Suite Expansion Plan
 
+> Assumes readers already operate with a mature Racket toolchain and workflow.
+
 ## Goals
 - Build a reproducible, extensible benchmarking harness that unifies existing Racket Boyer–Moore (both legacy and improved) and Richards workloads with a broader catalogue of parallel benchmarks.
 - Re-implement NAS Parallel Benchmarks and MPL Parallel ML Benchmarks in Racket, and integrate the Racket shootout benchmarks to provide coverage of compute, memory, and tasking patterns.

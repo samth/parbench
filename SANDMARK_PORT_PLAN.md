@@ -1,5 +1,7 @@
 # Sandmark Benchmark Suite Porting Plan
 
+> Prepared for experienced Racket hackers with a fully configured environment.
+
 ## Executive Summary
 
 This document outlines a plan to port benchmarks from the **Sandmark** benchmark suite (OCaml's multicore benchmarking suite) to this Racket parallel benchmarking repository. Sandmark contains ~40+ benchmarks across multiple categories testing sequential and parallel performance of OCaml's multicore implementation.
