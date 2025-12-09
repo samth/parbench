@@ -990,10 +990,32 @@
             intersect: true,
           },
           onClick: (event, elements) => {
+            let benchmarkName = null;
+
+            // First try to get from clicked element
             if (elements.length > 0) {
               const element = elements[0];
-              const benchmarkName = overallSpeedupChart.data.labels[element.index];
-              // Update the benchmark selector
+              benchmarkName = overallSpeedupChart.data.labels[element.index];
+            } else {
+              // If no element clicked, check if click is on y-axis label area
+              const yScale = overallSpeedupChart.scales.y;
+              if (yScale && event.y !== undefined) {
+                // Find which category the click y-position corresponds to
+                const labels = overallSpeedupChart.data.labels;
+                for (let i = 0; i < labels.length; i++) {
+                  const pixelPos = yScale.getPixelForValue(i);
+                  const categoryHeight = yScale.height / labels.length;
+                  // Check if click is within this category's band
+                  if (Math.abs(event.y - pixelPos) < categoryHeight / 2) {
+                    benchmarkName = labels[i];
+                    break;
+                  }
+                }
+              }
+            }
+
+            // Update the benchmark selector if we found a benchmark
+            if (benchmarkName) {
               const selector = document.getElementById('benchmarkFilter');
               if (selector) {
                 selector.value = benchmarkName;
