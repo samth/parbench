@@ -422,7 +422,9 @@
     function populateBenchmarkOptions() {
       const select = document.getElementById('benchmarkFilter');
       select.innerHTML = '';
-      data.benchmarks.forEach((bench, idx) => {
+      // Sort benchmarks alphabetically by name
+      const sortedBenchmarks = [...data.benchmarks].sort((a, b) => a.name.localeCompare(b.name));
+      sortedBenchmarks.forEach((bench, idx) => {
         const option = document.createElement('option');
         option.value = bench.name;
         option.textContent = bench.name;
