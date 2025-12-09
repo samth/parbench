@@ -858,12 +858,29 @@
 
         sortedBenchmarks.forEach((bench, benchIdx) => {
           // Find sequential baseline
-          const sequentialVariant = bench.variants.find(v => v.variant === 'sequential');
-          if (!sequentialVariant) {
-            console.log(`  ${bench.name}: No sequential variant found`);
-            return;
+          // For -v2 benchmarks, use the original benchmark's sequential time for comparison
+          let sequentialTime;
+          if (bench.name.endsWith('-v2')) {
+            const baseName = bench.name.replace(/-v2$/, '');
+            const originalBench = sortedBenchmarks.find(b => b.name === baseName);
+            if (originalBench) {
+              const sequentialVariant = originalBench.variants.find(v => v.variant === 'sequential');
+              if (sequentialVariant) {
+                sequentialTime = sequentialVariant.real_mean;
+                console.log(`  ${bench.name}: Using ${baseName} sequential baseline (${sequentialTime.toFixed(2)}ms)`);
+              }
+            }
           }
-          const sequentialTime = sequentialVariant.real_mean;
+
+          // If not found above (not v2, or v2 but no original), use own sequential
+          if (!sequentialTime) {
+            const sequentialVariant = bench.variants.find(v => v.variant === 'sequential');
+            if (!sequentialVariant) {
+              console.log(`  ${bench.name}: No sequential variant found`);
+              return;
+            }
+            sequentialTime = sequentialVariant.real_mean;
+          }
 
           // Find parallel entry for this worker count
           const parallelEntry = bench.variants.find(v =>
@@ -988,16 +1005,25 @@
             tooltip: {
               callbacks: {
                 label: function(context) {
+                  const benchName = context.chart.data.labels[context.dataIndex];
                   const dataPoint = context.raw;
-                  const benchName = dataPoint.y || 'Unknown';
-                  if (dataPoint.min !== undefined && dataPoint.max !== undefined) {
+
+                  // dataPoint is an array of values for violin plots
+                  if (Array.isArray(dataPoint)) {
+                    const values = dataPoint;
+                    const min = Math.min(...values);
+                    const max = Math.max(...values);
+                    const median = values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
+                    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+
                     return [
-                      `${context.dataset.label} (${benchName})`,
-                      `Median: ${dataPoint.median.toFixed(2)}×`,
-                      `Range: ${dataPoint.min.toFixed(2)}× - ${dataPoint.max.toFixed(2)}×`
+                      `${benchName} - ${context.dataset.label}`,
+                      `Mean: ${mean.toFixed(2)}×`,
+                      `Median: ${median.toFixed(2)}×`,
+                      `Range: ${min.toFixed(2)}× - ${max.toFixed(2)}×`
                     ];
                   }
-                  return `${context.dataset.label}: ${benchName}`;
+                  return `${benchName} - ${context.dataset.label}`;
                 }
               }
             }
