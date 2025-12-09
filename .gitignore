@@ -31,3 +31,6 @@ results/
 *.dat
 *.html
 !docs/*.html
+
+# Temporary workspace artifacts
+tmp/
