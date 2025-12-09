@@ -12,18 +12,18 @@
 ;; Tuned so sequential version takes >= 1 second
 ;; Includes both original (v1) and SBCL-style (v2) parallel implementations
 (define benchmark-configs
-  '((binary-trees "--n" "18" "--repeat" "3")
-    (binary-trees-v2 "--n" "18" "--repeat" "3")
-    (spectral-norm "--n" "3000" "--repeat" "3")
-    (spectral-norm-v2 "--n" "3000" "--repeat" "3")
-    (fannkuch-redux "--n" "11" "--repeat" "3")
-    (fannkuch-redux-v2 "--n" "11" "--repeat" "3")
-    (mandelbrot "--n" "4000" "--repeat" "3")
-    (mandelbrot-v2 "--n" "4000" "--repeat" "3")
-    (k-nucleotide "--n" "500000" "--repeat" "3")
-    (k-nucleotide-v2 "--n" "500000" "--repeat" "3")
-    (regex-dna "--n" "500000" "--repeat" "3")
-    (regex-dna-v2 "--n" "500000" "--repeat" "3")))
+  '((binary-trees "--n" "18" "--repeat" "10")
+    (binary-trees-v2 "--n" "18" "--repeat" "10")
+    (spectral-norm "--n" "3000" "--repeat" "10")
+    (spectral-norm-v2 "--n" "3000" "--repeat" "10")
+    (fannkuch-redux "--n" "11" "--repeat" "10")
+    (fannkuch-redux-v2 "--n" "11" "--repeat" "10")
+    (mandelbrot "--n" "4000" "--repeat" "10")
+    (mandelbrot-v2 "--n" "4000" "--repeat" "10")
+    (k-nucleotide "--n" "500000" "--repeat" "10")
+    (k-nucleotide-v2 "--n" "500000" "--repeat" "10")
+    (regex-dna "--n" "500000" "--repeat" "10")
+    (regex-dna-v2 "--n" "500000" "--repeat" "10")))
 
 ;; All benchmarks now have sequential/parallel variants
 

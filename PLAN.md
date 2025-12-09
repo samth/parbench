@@ -9,7 +9,7 @@
 
 **Completed:**
 - ✅ Core infrastructure (Phases 1-2): Shared CLI, logging, harness, tests
-- ✅ Shootout integration (Phase 3): 9 benchmarks with parallel variants (spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, chameneos, fasta, regex-dna, k-nucleotide)
+- ✅ Shootout integration (Phase 3): 8 benchmarks with parallel variants (spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, fasta, regex-dna, k-nucleotide)
 - ✅ NAS benchmarks implementation (Phase 4): 3 kernels (EP, IS, CG) with sequential/parallel variants
 - ✅ MPL benchmarks re-implementation (Phase 5): 7 benchmarks (histogram, integer-sort, bfs, mis, msf, suffix-array, convex-hull)
 - ✅ Unified CLI orchestration (Phase 6): Suite runner with configuration file support
@@ -65,7 +65,7 @@
 - [x] Audit the Racket shootout workloads and identify parallelizable candidates.
 - [x] Create `benchmarks/shootout/README.md` describing available workloads and differences.
 - [x] Vendor or submodule upstream sources as needed (`benchmarks/shootout/src/`).
-- [x] Wrap selected benchmarks (spectral norm, binary trees, n-body, fannkuch-redux, mandelbrot, chameneos) with CLI fronts, logging, and smoke configurations.
+- [x] Wrap selected benchmarks (spectral norm, binary trees, n-body, fannkuch-redux, mandelbrot) with CLI fronts, logging, and smoke configurations.
 - [x] Add sanity tests comparing sequential vs. parallel outputs.
 - [x] Update documentation to describe shootout benchmarks and parameters.
 - [x] Expand coverage with additional shootout programs (e.g., fasta, regex-dna, k-nucleotide) in future iterations.

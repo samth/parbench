@@ -33,8 +33,8 @@ Sandmark is a comprehensive benchmark suite for the OCaml compiler, developed pr
 **Racket Suite (4):**
 - bmbench, bmbench_improved, richards, rows1b
 
-**Shootout Suite (9):**
-- spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, chameneos, fasta, regex-dna, k-nucleotide
+**Shootout Suite (8):**
+- spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, fasta, regex-dna, k-nucleotide
 
 **NAS Suite (3):**
 - ep (Embarrassingly Parallel), is (Integer Sort), cg (Conjugate Gradient)
@@ -45,7 +45,7 @@ Sandmark is a comprehensive benchmark suite for the OCaml compiler, developed pr
 ### Overlap Analysis
 
 **Already covered by existing suites:**
-- spectral-norm, nbody, mandelbrot, chameneos ✓ (in shootout)
+- spectral-norm, nbody, mandelbrot ✓ (in shootout)
 - BFS ✓ (in MPL as graph algorithm)
 - Histogram ✓ (in MPL)
 
@@ -481,7 +481,7 @@ Create config files in `benchmarks/config/`:
 1. **almabench, coq, alt-ergo, menhir, etc.** - Application-specific benchmarks tied to OCaml tooling
 2. **decompress, yojson, irmin, cpdf** - Library-specific benchmarks
 3. **multicore-effects** - OCaml 5.0 effect handlers (no direct Racket equivalent)
-4. **Duplicate shootout benchmarks** - Already have spectral-norm, nbody, mandelbrot, chameneos
+4. **Duplicate shootout benchmarks** - Already have spectral-norm, nbody, mandelbrot
 
 ### Rationale:
 Focus on **algorithmic benchmarks** that test parallel patterns and data structures, not OCaml-specific libraries or language features.

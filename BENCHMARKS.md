@@ -22,7 +22,6 @@ benchmarks/
     nbody.rkt             ; n-body gravitational simulation
     fannkuch-redux.rkt    ; fannkuch-redux permutation benchmark
     mandelbrot.rkt        ; mandelbrot set fractal generation
-    chameneos.rkt         ; chameneos-redux thread coordination benchmark
     fasta.rkt             ; FASTA sequence generation benchmark
     regex-dna.rkt         ; Regex DNA pattern matching benchmark
     k-nucleotide.rkt      ; K-nucleotide frequency analysis benchmark
@@ -107,12 +106,6 @@ racket benchmarks/shootout/mandelbrot.rkt \
   --workers 8 \
   --repeat 3 \
   --log logs/mandelbrot.sexp
-
-# Chameneos-redux (shootout) benchmark
-racket benchmarks/shootout/chameneos.rkt \
-  --n 10000 \
-  --repeat 3 \
-  --log logs/chameneos.sexp
 
 # FASTA (shootout) benchmark
 racket benchmarks/shootout/fasta.rkt \

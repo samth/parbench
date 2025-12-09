@@ -91,10 +91,13 @@
 
   bitmap)
 
+(require future-visualizer)
+
 (define (mandelbrot N #:workers [workers 1])
-  (if (= workers 1)
-      (mandelbrot-sequential N)
-      (mandelbrot-parallel N workers)))
+  (visualize-futures
+   (if (= workers 1)
+       (mandelbrot-sequential N)
+       (mandelbrot-parallel N workers))))
 
 (module+ main
   (define N 200)

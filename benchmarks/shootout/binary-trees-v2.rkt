@@ -62,7 +62,7 @@
         (cons 'results results)
         (list 'long-lived max-depth long-lived-check)))
 
-;; SBCL pattern: 4 workers with task queue, depths as tasks
+;; Parallel implementation: task queue + async workers
 (define (binary-trees-parallel max-depth workers)
   (define stretch-depth (fx+ max-depth 1))
   (define stretch-check (check (make 0 stretch-depth)))
@@ -75,7 +75,7 @@
     (async-channel-put task-queue d))
 
   ;; Sentinel values to signal workers to stop
-  (define worker-count (min 4 workers))  ; SBCL uses 4 workers
+  (define worker-count (max 1 workers))
   (for ([i (in-range worker-count)])
     (async-channel-put task-queue 'done))
 
@@ -128,7 +128,7 @@
   (require racket/future)
 
   (define max-depth 16)
-  (define workers 4)  ; Default to 4 to match SBCL
+  (define workers (processor-count))
   (define repeat 1)
   (define log-path #f)
   (define skip-sequential #f)
@@ -139,7 +139,7 @@
     #:once-each
     [("--n") arg "Maximum tree depth"
      (set! max-depth (parse-positive-integer arg 'binary-trees))]
-    [("--workers") arg "Parallel thread count (SBCL uses 4)"
+    [("--workers") arg "Parallel thread count"
      (set! workers (parse-positive-integer arg 'binary-trees))]
     [("--repeat") arg "Benchmark repetitions"
      (set! repeat (parse-positive-integer arg 'binary-trees))]

@@ -25,8 +25,7 @@
     (mandelbrot "shootout/mandelbrot.rkt" (--n "500" --workers "4" --repeat "3"))
     (fasta "shootout/fasta.rkt" (--n "100000" --workers "4" --repeat "3"))
     (regex-dna "shootout/regex-dna.rkt" (--n "100000" --workers "4" --repeat "3"))
-    (k-nucleotide "shootout/k-nucleotide.rkt" (--n "100000" --workers "4" --repeat "3"))
-    (chameneos "shootout/chameneos.rkt" (--n "5000" --repeat "3"))))
+    (k-nucleotide "shootout/k-nucleotide.rkt" (--n "100000" --workers "4" --repeat "3"))))
 
 (define nas-benchmarks
   '((nas-ep "nas/ep.rkt" (--class "S" --workers "4" --repeat "3"))))
