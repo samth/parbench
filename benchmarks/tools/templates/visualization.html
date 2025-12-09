@@ -949,6 +949,7 @@
           type: 'violin',
           data: chartData,
           options: {
+            indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: false,
             layout: {
@@ -1003,22 +1004,6 @@
           },
           scales: {
             x: {
-              type: 'category',
-              offset: true,
-              stacked: true,
-              title: {
-                display: true,
-                text: 'Benchmark',
-                font: {
-                  size: 14,
-                  weight: 'bold'
-                }
-              },
-              grid: {
-                display: false
-              }
-            },
-            y: {
               type: 'linear',
               beginAtZero: true,
               title: {
@@ -1036,6 +1021,22 @@
               },
               grid: {
                 color: '#e0e0e0'
+              }
+            },
+            y: {
+              type: 'category',
+              offset: true,
+              stacked: true,
+              title: {
+                display: true,
+                text: 'Benchmark',
+                font: {
+                  size: 14,
+                  weight: 'bold'
+                }
+              },
+              grid: {
+                display: false
               }
             }
           }
