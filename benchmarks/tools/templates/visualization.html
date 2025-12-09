@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>@@TITLE@@</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@sgratzl/chartjs-chart-boxplot@4.2.5/build/index.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -134,6 +136,11 @@
     .chart-container {
       position: relative;
       height: 400px;
+    }
+
+    .chart-container-large {
+      position: relative;
+      height: 800px;
     }
 
     .details-table {
@@ -285,6 +292,13 @@
       <p>Benchmark Results</p>
     </header>
 
+    <section class="section">
+      <h2>Parallel Speedup - All Benchmarks</h2>
+      <div class="chart-container-large">
+        <canvas id="overallSpeedupChart"></canvas>
+      </div>
+    </section>
+
     <section class="controls">
       <div class="control-group">
         <label for="benchmarkFilter">Benchmark</label>
@@ -362,12 +376,48 @@
     const data = @@DATA@@;
     let timingChart = null;
     let speedupChart = null;
+    let overallSpeedupChart = null;
     let tableSort = { column: 'worker', direction: 'asc' };
     let sortingInitialized = false;
 
     // Chart.js defaults
     Chart.defaults.color = '#666666';
     Chart.defaults.borderColor = '#e0e0e0';
+
+    // Check and register boxplot/violin controllers
+    console.log('=== Checking for boxplot library ===');
+    console.log('window.ChartBoxPlot:', typeof window.ChartBoxPlot);
+    console.log('ChartBoxPlot contents:', window.ChartBoxPlot);
+
+    // Register individual controllers from the library
+    if (typeof window.ChartBoxPlot !== 'undefined') {
+      console.log('Found ChartBoxPlot, registering controllers...');
+      const lib = window.ChartBoxPlot;
+
+      // Register each controller individually
+      if (lib.BoxPlotController) {
+        Chart.register(lib.BoxPlotController);
+        console.log('Registered BoxPlotController');
+      }
+      if (lib.ViolinController) {
+        Chart.register(lib.ViolinController);
+        console.log('Registered ViolinController');
+      }
+
+      // Also try registering as an array
+      const controllers = [
+        lib.BoxPlotController,
+        lib.ViolinController,
+        lib.BoxAndWiskers
+      ].filter(Boolean);
+
+      if (controllers.length > 0) {
+        Chart.register(...controllers);
+        console.log('Registered controllers:', controllers.map(c => c.id || c.name));
+      }
+    }
+
+    console.log('Registered chart types:', Chart.registry.controllers.items);
 
     function populateBenchmarkOptions() {
       const select = document.getElementById('benchmarkFilter');
@@ -759,6 +809,282 @@
       });
     }
 
+    function createOverallSpeedupChart() {
+      console.log('=== createOverallSpeedupChart called ===');
+      console.log('data.benchmarks:', data.benchmarks);
+
+      // Sort benchmarks to group v1 and v2 versions together
+      const sortedBenchmarks = [...data.benchmarks].sort((a, b) => {
+        const aBase = a.name.replace(/-v2$/, '');
+        const bBase = b.name.replace(/-v2$/, '');
+        if (aBase !== bBase) {
+          return aBase.localeCompare(bBase);
+        }
+        // v1 comes before v2
+        return a.name.localeCompare(b.name);
+      });
+      console.log('sortedBenchmarks:', sortedBenchmarks.map(b => b.name));
+
+      // Collect all worker counts
+      const allWorkerCounts = new Set();
+      sortedBenchmarks.forEach(bench => {
+        bench.variants.forEach(v => {
+          if (v.worker !== null && v.worker !== undefined && v.worker !== false) {
+            allWorkerCounts.add(v.worker);
+          }
+        });
+      });
+      const workerValues = Array.from(allWorkerCounts).sort((a, b) => a - b);
+      console.log('workerValues:', workerValues);
+
+      // Define colors for different worker counts
+      const workerColors = {
+        1: '#808080',  // gray
+        2: '#4a90e2',  // blue
+        4: '#2ecc71',  // green
+        6: '#f39c12',  // orange
+        8: '#e74c3c',  // red
+        12: '#9b59b6', // purple
+        16: '#1abc9c', // turquoise
+      };
+
+      // Create datasets - one per worker count
+      const datasets = [];
+
+      workerValues.forEach(workers => {
+        console.log(`\nProcessing worker count: ${workers}`);
+        const color = workerColors[workers] || '#95a5a6';
+        const dataPoints = [];
+
+        sortedBenchmarks.forEach((bench, benchIdx) => {
+          // Find sequential baseline
+          const sequentialVariant = bench.variants.find(v => v.variant === 'sequential');
+          if (!sequentialVariant) {
+            console.log(`  ${bench.name}: No sequential variant found`);
+            return;
+          }
+          const sequentialTime = sequentialVariant.real_mean;
+
+          // Find parallel entry for this worker count
+          const parallelEntry = bench.variants.find(v =>
+            v.variant === 'parallel' && v.worker === workers
+          );
+
+          if (!parallelEntry) {
+            console.log(`  ${bench.name}: No parallel entry for ${workers} workers`);
+            return;
+          }
+
+          if (!parallelEntry.real_values) {
+            console.log(`  ${bench.name}: No real_values for ${workers} workers`);
+            return;
+          }
+
+          if (parallelEntry && parallelEntry.real_mean > 0 && parallelEntry.real_values) {
+            // Calculate speedup for each raw timing value
+            const speedupValues = parallelEntry.real_values.map(time => sequentialTime / time);
+
+            // Calculate statistics from speedup values
+            const speedupMean = sequentialTime / parallelEntry.real_mean;
+            const speedupMin = Math.min(...speedupValues);
+            const speedupMax = Math.max(...speedupValues);
+
+            console.log(`  ${bench.name}: speedupValues=${JSON.stringify(speedupValues)}, mean=${speedupMean.toFixed(2)}`);
+
+            // For violin plots with category scale, just push the array of values
+            // The labels are defined at the chart level, so this matches by index
+            dataPoints.push(speedupValues);
+          }
+        });
+
+        console.log(`  Total dataPoints for ${workers} workers: ${dataPoints.length}`);
+
+        datasets.push({
+          label: `${workers} worker${workers > 1 ? 's' : ''}`,
+          data: dataPoints,
+          backgroundColor: color + '40',
+          borderColor: color,
+          borderWidth: 2,
+          outlierColor: color,
+          itemRadius: 0,
+          meanRadius: 0
+        });
+      });
+
+      if (overallSpeedupChart) {
+        overallSpeedupChart.destroy();
+      }
+
+      // For vertical violin plots, we'll rely on y-axis grid lines instead of custom annotations
+      const lineAnnotations = {};
+
+      console.log('\nFinal datasets:', datasets);
+      console.log('Total datasets:', datasets.length);
+      console.log('First dataset sample:', {
+        label: datasets[0].label,
+        dataLength: datasets[0].data.length,
+        firstDataPoint: datasets[0].data[0],
+        secondDataPoint: datasets[0].data[1]
+      });
+      console.log('lineAnnotations:', lineAnnotations);
+
+      const labelArray = sortedBenchmarks.map(b => b.name);
+      console.log('Labels array:', labelArray);
+      console.log('Labels count:', labelArray.length);
+
+      const ctx = document.getElementById('overallSpeedupChart').getContext('2d');
+      console.log('Canvas context:', ctx);
+
+      const chartData = {
+        labels: labelArray,
+        datasets
+      };
+      console.log('Chart data structure:', {
+        labelsCount: chartData.labels.length,
+        datasetsCount: chartData.datasets.length
+      });
+
+      try {
+        overallSpeedupChart = new Chart(ctx, {
+          type: 'violin',
+          data: chartData,
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: {
+              padding: {
+                left: 40,
+                right: 40,
+                top: 10,
+                bottom: 10
+              }
+            },
+            datasets: {
+              violin: {
+                barPercentage: 0.33,
+                categoryPercentage: 0.8
+              }
+            },
+          interaction: {
+            mode: 'nearest',
+            intersect: true,
+          },
+          plugins: {
+            annotation: {
+              annotations: lineAnnotations
+            },
+            legend: {
+              display: true,
+              position: 'right',
+              labels: {
+                usePointStyle: true,
+                padding: 12,
+                font: {
+                  size: 11
+                }
+              }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const dataPoint = context.raw;
+                  const benchName = dataPoint.y || 'Unknown';
+                  if (dataPoint.min !== undefined && dataPoint.max !== undefined) {
+                    return [
+                      `${context.dataset.label} (${benchName})`,
+                      `Median: ${dataPoint.median.toFixed(2)}×`,
+                      `Range: ${dataPoint.min.toFixed(2)}× - ${dataPoint.max.toFixed(2)}×`
+                    ];
+                  }
+                  return `${context.dataset.label}: ${benchName}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              type: 'category',
+              offset: true,
+              stacked: true,
+              title: {
+                display: true,
+                text: 'Benchmark',
+                font: {
+                  size: 14,
+                  weight: 'bold'
+                }
+              },
+              grid: {
+                display: false
+              }
+            },
+            y: {
+              type: 'linear',
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Speedup',
+                font: {
+                  size: 14,
+                  weight: 'bold'
+                }
+              },
+              ticks: {
+                callback: function(value) {
+                  return value.toFixed(1) + '×';
+                }
+              },
+              grid: {
+                color: '#e0e0e0'
+              }
+            }
+          }
+        }
+      });
+      console.log('Chart created successfully!', overallSpeedupChart);
+
+      // Log internal chart state
+      console.log('Chart config:', {
+        type: overallSpeedupChart.config.type,
+        dataLabels: overallSpeedupChart.data.labels,
+        datasetsCount: overallSpeedupChart.data.datasets.length
+      });
+
+      // Log the parsed datasets
+      console.log('Chart datasets after initialization:');
+      overallSpeedupChart.data.datasets.forEach((ds, idx) => {
+        console.log(`  Dataset ${idx} (${ds.label}):`, {
+          dataLength: ds.data.length,
+          firstPoint: ds.data[0],
+          type: ds.type
+        });
+      });
+
+      // Check if chart has scales
+      console.log('Chart scales:', Object.keys(overallSpeedupChart.scales || {}));
+      if (overallSpeedupChart.scales) {
+        Object.keys(overallSpeedupChart.scales).forEach(scaleId => {
+          const scale = overallSpeedupChart.scales[scaleId];
+          console.log(`  Scale ${scaleId}:`, {
+            type: scale.type,
+            min: scale.min,
+            max: scale.max,
+            ticks: scale.ticks?.length
+          });
+        });
+      }
+
+      // Force update
+      console.log('Forcing chart update...');
+      overallSpeedupChart.update();
+      console.log('Chart update complete');
+
+    } catch (error) {
+      console.error('Error creating chart:', error);
+      console.error('Error stack:', error.stack);
+    }
+  }
+
     function updateVisualization() {
       const bench = getSelectedBenchmark();
       updateStats(bench);
@@ -777,6 +1103,7 @@
 
     populateBenchmarkOptions();
     setupTableSorting();
+    createOverallSpeedupChart();
     document.getElementById('benchmarkFilter').addEventListener('change', handleBenchmarkChange);
     document.getElementById('metricType').addEventListener('change', handleControlsChange);
     document.getElementById('scaleToggle').addEventListener('change', handleControlsChange);

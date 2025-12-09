@@ -5,6 +5,7 @@
          racket/format)
 
 (provide load-summaries
+         load-raw-data
          summary?
          summary-name
          summary-variant
@@ -15,10 +16,16 @@
          summary-real-min
          summary-real-max
          summary-cpu-mean
-         summary-gc-mean)
+         summary-gc-mean
+         raw-data?
+         raw-data-name
+         raw-data-variant
+         raw-data-worker
+         raw-data-real-values)
 
 (struct stat (count sum sumsq min max) #:mutable)
 (struct summary (name variant worker count real-mean real-stddev real-min real-max cpu-mean gc-mean) #:transparent)
+(struct raw-data (name variant worker real-values) #:transparent)
 
 (define (make-stat)
   (stat 0 0.0 0.0 +inf.0 -inf.0))
@@ -128,3 +135,39 @@
              (safe-max real-stat)
              (stat-mean cpu-stat)
              (stat-mean gc-stat))))
+
+(define (collect-raw-values! raw-data-hash datum)
+  (when (and (list? datum) (pair? datum) (eq? (car datum) 'benchmark))
+    (define fields (cdr datum))
+    (define name (extract-field 'name fields))
+    (define variant (extract-field 'variant fields))
+    (define metrics (extract-field 'metrics fields))
+    (define params (extract-field 'params fields))
+    (when (and name variant metrics)
+      (define real (extract-metric 'real-ms metrics))
+      (define workers (and params (extract-metric 'workers params)))
+      (when real
+        (define key (list name variant workers))
+        (define values (hash-ref raw-data-hash key '()))
+        (hash-set! raw-data-hash key (cons real values))))))
+
+(define (process-port-raw in raw-data-hash)
+  (let loop ()
+    (define datum (read-datum in))
+    (cond
+      [(eof-object? datum) (void)]
+      [datum (collect-raw-values! raw-data-hash datum) (loop)]
+      [else (loop)])))
+
+(define (load-raw-data paths)
+  (define raw-data-hash (make-hash))
+  (define files (if (null? paths) (list "-") paths))
+  (for ([path (in-list files)])
+    (cond
+      [(string=? path "-") (process-port-raw (current-input-port) raw-data-hash)]
+      [else (call-with-input-file path (λ (in) (process-port-raw in raw-data-hash)))]))
+  (for/list ([(key values) (in-hash raw-data-hash)])
+    (define name (first key))
+    (define variant (second key))
+    (define worker (third key))
+    (raw-data name variant worker (reverse values))))
