@@ -17,7 +17,7 @@
      (define out-path (string->path path))
      (define dir (path-only out-path))
      (when dir (make-directory* dir))
-     (log-writer (open-output-file out-path #:exists 'replace))]))
+     (log-writer (open-output-file out-path #:exists 'append))]))
 
 (define (close-log-writer writer)
   (when (and writer (log-writer-out writer))

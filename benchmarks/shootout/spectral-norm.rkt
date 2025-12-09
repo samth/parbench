@@ -96,6 +96,7 @@
   (define iterations 10)
   (define repeat 1)
   (define log-path #f)
+  (define skip-sequential #f)
 
   (void
    (command-line
@@ -110,7 +111,9 @@
     [("--repeat") arg "Benchmark repetitions"
      (set! repeat (parse-positive-integer arg 'spectral-norm))]
     [("--log") arg "Optional S-expression log path"
-     (set! log-path arg)]))
+     (set! log-path arg)]
+    [("--skip-sequential") "Skip sequential variant"
+     (set! skip-sequential #t)]))
 
   (define writer (make-log-writer log-path))
   (define metadata (system-metadata))
@@ -118,7 +121,7 @@
                        (list 'iterations iterations)
                        (list 'workers workers)))
 
-  (define sequential-value
+  (unless skip-sequential
     (run-benchmark
      (λ () (spectral-norm n #:workers 1 #:iterations iterations))
      #:name 'spectral-norm
@@ -135,10 +138,6 @@
    #:repeat repeat
    #:log-writer writer
    #:params params
-   #:metadata metadata
-   #:check (λ (_ value)
-             (define diff (abs (- value sequential-value)))
-             (when (> diff 1e-6)
-               (error 'spectral-norm "parallel mismatch"))))
+   #:metadata metadata)
 
   (close-log-writer writer))

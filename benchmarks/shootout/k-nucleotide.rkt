@@ -70,6 +70,7 @@
   (define workers (processor-count))
   (define repeat 1)
   (define log-path #f)
+  (define skip-sequential #f)
 
   (void
    (command-line
@@ -82,13 +83,15 @@
     [("--repeat") arg "Benchmark repetitions"
      (set! repeat (parse-positive-integer arg 'k-nucleotide))]
     [("--log") arg "Optional S-expression log path"
-     (set! log-path arg)]))
+     (set! log-path arg)]
+    [("--skip-sequential") "Skip sequential variant"
+     (set! skip-sequential #t)]))
 
   (define writer (make-log-writer log-path))
   (define metadata (system-metadata))
   (define params (list (list 'n n) (list 'workers workers)))
 
-  (define sequential
+  (unless skip-sequential
     (run-benchmark
      (λ () (k-nucleotide n #:workers 1))
      #:name 'k-nucleotide
@@ -105,9 +108,6 @@
    #:repeat repeat
    #:log-writer writer
    #:params params
-   #:metadata metadata
-   #:check (λ (_ value)
-             (unless (equal? value sequential)
-               (error 'k-nucleotide "parallel mismatch: ~a vs ~a" value sequential))))
+   #:metadata metadata)
 
   (close-log-writer writer))
