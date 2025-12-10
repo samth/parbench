@@ -1,58 +1,55 @@
-# Shootout Benchmark Speedup Analysis
+# Shootout Benchmark Parallel Speedups (Racket vs. CLBG Languages)
 
-## Methodology
+## 1. Racket Benchmarks: Measured Speedups
 
-- **Racket runs.** The data come from rerunning every shootout benchmark with `--repeat 10` and capturing sequential plus worker-count sweeps (1, 2, 4, 6, 8) in `logs/shootout/*.sexp` on 9 December 2025. Times reported below are real-time means derived from those logs (seconds, rounded to 3 decimals). Variants tagged “v2” are the SBCL-inspired implementations that now scale with the requested worker count.
-- **Speedup definition.** Speedup = (mean sequential time) ÷ (mean parallel time) for the worker count that produced the fastest run.
-- **External reference.** Absolute times for other languages (Rust, OCaml, Haskell, Java, Python) are pulled from the latest Computer Language Benchmarks Game (CLBG) tables for each workload. Those programs target a different input size (n=21 for binary trees, 12-worker task counts for fan-out kernels, etc.) and run on Debian’s reference hardware, so comparisons highlight order-of-magnitude differences rather than precise apples-to-apples parity.
+All numbers below are derived from the refreshed `logs/shootout/*.sexp` data produced on 9 December 2025 (20-core x86_64 system, `--repeat 10` for every sequential run and each worker count 1/2/4/6/8). Times are real-time means in seconds.
 
-## Racket Results by Benchmark
+| Benchmark | Variant | Sequential (s) | Best worker | Best parallel (s) | Speedup |
+| --- | --- | --- | --- | --- | --- |
+| binary-trees | v1 | 0.616 | 1 | 0.605 | 1.02× |
+| binary-trees | v2 | 0.594 | 6 | 0.535 | 1.11× |
+| fannkuch-redux | v1 | 2.789 | 8 | 0.395 | **7.05×** |
+| fannkuch-redux | v2 | 2.765 | 6 | 0.763 | 3.62× |
+| k-nucleotide | v1 | 5.402 | 8 | 2.511 | 2.15× |
+| k-nucleotide | v2 | 5.235 | 6 | 2.844 | 1.84× |
+| mandelbrot | v1 | 1.631 | 8 | 0.363 | 4.49× |
+| mandelbrot | v2 | 1.628 | 8 | 0.362 | 4.49× |
+| regex-dna | v1 | 2.763 | 6 | 2.303 | 1.20× |
+| regex-dna | v2 | 2.590 | 6 | 2.234 | 1.16× |
+| spectral-norm | v1 | 1.674 | 8 | 0.337 | **4.97×** |
+| spectral-norm | v2 | 1.675 | 4 | 0.640 | 2.62× |
 
-| Benchmark | Variant | Seq time (s) | Best worker | Best parallel time (s) | Speedup | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| binary-trees | v1 | 0.616 | 1 | 0.605 | 1.02× | Parallel body mirrors the sequential work, so extra workers mainly add synchronization overhead. |
-| binary-trees | v2 | 0.594 | 6 | 0.535 | 1.11× | Task-queue design now scales with worker count but still tree-creation bound; beyond 6 workers adds contention. |
-| fannkuch-redux | v1 | 2.789 | 8 | 0.395 | **7.05×** | Futures exploit independent permutation blocks, producing the strongest scaling in the suite. |
-| fannkuch-redux | v2 | 2.765 | 6 | 0.763 | 3.62× | SBCL-style 4-worker chunking leaves throughput on the table even after unbinding the worker cap. |
-| k-nucleotide | v1 | 5.402 | 8 | 2.511 | 2.15× | Hash-table updates + allocator pressure limit scaling; GC dominates past 8 workers. |
-| k-nucleotide | v2 | 5.235 | 6 | 2.844 | 1.84× | Semaphore-protected chunking removes scheduling overhead but lowers peak speedup slightly. |
-| mandelbrot | v1 | 1.631 | 8 | 0.363 | 4.49× | Embarrassingly parallel pixel rows; best case is worker-count limited. |
-| mandelbrot | v2 | 1.628 | 8 | 0.362 | 4.49× | Same computation, SBCL-style partitioning yields near-identical curve. |
-| regex-dna | v1 | 2.763 | 6 | 2.303 | 1.20× | Parallel regex passes contend on the runtime regexp engine; limited benefit beyond 6 workers. |
-| regex-dna | v2 | 2.590 | 6 | 2.234 | 1.16× | Parallel substring buckets help a bit, but substitution phase stays sequential. |
-| spectral-norm | v1 | 1.674 | 8 | 0.337 | **4.97×** | Dense numeric kernel benefits from work stealing up to a full socket. |
-| spectral-norm | v2 | 1.675 | 4 | 0.640 | 2.62× | SBCL-style fixed 4 thread ranges remain the bottleneck even after honoring higher worker counts. |
+Interpretation:
+- The computation-heavy kernels (fannkuch-redux, spectral-norm, mandelbrot) achieve 4.5–7× speedups on 8 workers, showing good scaling of the futures/thread pools.
+- Memory/GC-heavy kernels (k-nucleotide, regex-dna) top out around 2× because allocator contention and string handling dominate.
+- Both binary-trees variants remain essentially sequential despite the new worker-scaling task queue, indicating that tree construction work-items are too small relative to synchronization overhead.
 
-### Observations
+## 2. What the CLBG Publishes (Rust/OCaml/Haskell/Java/Python)
 
-1. **Computation-heavy kernels shine.** Fannkuch-redux, mandelbrot, and spectral-norm demonstrate 4.5–7× speedups when the workload decomposes cleanly into independent chunks with little shared state.
-2. **Memory/GC-bound benchmarks stall early.** Both regex-dna variants and k-nucleotide hit 1.1–2.1× despite additional workers because string copies and hash updates dominate, amplifying collector work.
-3. **Binary trees remain essentially sequential.** Even with the task queue, tree construction has so little per-task work that synchronization costs exceed saved compute; further parallelization would require batching multiple depths per task or adopting a parallel allocator.
+The Computer Language Benchmarks Game (CLBG) runs each submitted program once per benchmark/input and reports a single elapsed time plus supporting metrics (code size, memory, optionally CPU time summed across threads) on a fixed Debian server (Intel Q6600 @ 2.4 GHz, 4 GB).citeturn0search7 The per-program tables explicitly warn that “some programs are single-threaded—some sequentially use multiple cores,” but no worker-count sweep or sequential baseline is provided.citeturn1view0 Consequently, CLBG publishes absolute runtimes but not *parallel speedups* for Rust, OCaml, Haskell, Java, or Python; at best we can note whether a submission is annotated as multi-threaded (via the “CPU secs” column) but we cannot reconstruct scaling curves analogous to the Racket data above.
 
-## Cross-Language Comparison (CLBG vs. This Machine)
+### Fastest CLBG absolute times (seconds)
 
-Best Racket times below pick the faster of the v1/v2 variants. The right-hand columns list top CLBG results (lower is faster) for the same workloads.
+| Benchmark | Rust | OCaml | Haskell | Java | Python |
+| --- | --- | --- | --- | --- | --- |
+| binary-trees | 1.07citeturn1view0 | 7.78citeturn1view0 | 2.16citeturn1view0 | 3.90citeturn1view0 | 33.37citeturn1view0 |
+| fannkuch-redux | 3.81citeturn2view0 | 8.84citeturn2view0 | 9.69citeturn2view0 | 9.26citeturn2view0 | 1.41citeturn2view0 |
+| k-nucleotide | 2.57citeturn3view0 | 16.17citeturn3view0 | 23.30citeturn3view0 | 6.25citeturn3view0 | 46.55citeturn3view0 |
+| mandelbrot | 0.95citeturn4view0 | 7.60citeturn4view0 | 1.39citeturn4view0 | 3.96citeturn4view0 | 143.13citeturn4view0 |
+| regex-dna | 0.78citeturn5view0 | 2.20citeturn5view0 | 1.10citeturn5view0 | 1.38citeturn5view0 | 1.41citeturn5view0 |
+| spectral-norm | 0.72citeturn6view0 | 5.34citeturn6view0 | 1.49citeturn6view0 | 1.47citeturn6view0 | 90.37citeturn6view0 |
 
-| Benchmark | Racket best (variant @ workers) | Rust (s) | OCaml (s) | Haskell (s) | Java (s) | Python (s) |
-| --- | --- | --- | --- | --- | --- | --- |
-| binary-trees | 0.535 s (v2 @ 6) | 1.07 | 7.78 | 2.16 | 3.90 | 35.37 |
-| fannkuch-redux | 0.395 s (v1 @ 8) | 3.81 | 8.84 | 9.69 | 9.26 | 150.23 |
-| k-nucleotide | 2.511 s (v1 @ 8) | 1.49 | 4.38 | 5.30 | 6.30 | 59.47 |
-| mandelbrot | 0.362 s (v2 @ 8) | 1.09 | 1.90 | 2.07 | 1.49 | 43.63 |
-| regex-dna | 2.234 s (v2 @ 6) | 1.69 | 2.86 | 3.90 | 2.07 | 39.45 |
-| spectral-norm | 0.337 s (v1 @ 8) | 2.04 | 2.80 | 5.72 | 3.01 | 62.20 |
+> **Important caveat:** CLBG uses different input sizes (e.g., binary trees depth 21) and a slower reference CPU, so these absolute times are *not* directly comparable to the Racket numbers gathered on a modern workstation. They simply illustrate the order of magnitude for each language’s best submission.
 
-CLBG sources: binary trees, fannkuch-redux, k-nucleotide, mandelbrot, regex-dna, spectral-norm.citeturn2open0turn3open0turn4open0turn5open0turn6open0turn7open0
+## 3. Comparing Speedups
 
-### How to interpret the comparison
+Because CLBG publishes only a single runtime per submission—with no paired sequential vs. parallel runs—there is no way to compute speedups for Rust, OCaml, Haskell, Java, or Python analogous to the Racket data above. The site even warns readers to “compare secs and CPU secs” to guess whether a program used multiple cores, but that still yields at most a binary “parallel or not” flag, not a scaling curve.citeturn1view0 Therefore:
 
-1. **Absolute timing:** On this workstation (20-core x86_64), the optimized Racket builds outperform the published CLBG numbers for every benchmark except k-nucleotide and regex-dna. This is mostly because our workload sizes are smaller (e.g., binary trees depth 18 vs. CLBG’s depth 21) and because CLBG runs on a slower dual-socket Xeon; nevertheless, it shows that the Racket implementations themselves are efficient enough to stay within a small-constant factor of Rust/C for the same algorithmic structure.
-2. **Relative distance to compiled languages:** After normalizing by input size, k-nucleotide and regex-dna remain the largest gaps: even on our smaller workload, Racket’s best times are ~1.5× slower than Rust and roughly on par with OCaml/Java. That lines up with the limited internal speedups above — both programs are limited by heavy string processing that benefits from native SIMD/vector intrinsics in the CLBG entries.
-3. **Spectral norm & fannkuch as bright spots:** The spectral-norm and fannkuch-redux kernels deliver the biggest internal speedups *and* beat the CLBG absolute times for Rust/Java despite running on smaller data. That suggests the combination of futures + flvector-heavy code is a sweet spot for Racket’s runtime.
-4. **Parallel overhead vs. baseline:** Because CLBG entries are typically single-threaded (or use OpenMP pragmas tightly bound to C-like runtimes), their “speedup” story is largely about absolute throughput rather than parallel scaling. In contrast, our measurements explicitly highlight multi-worker scaling. Binary trees demonstrates that without enough work per task, the parallel version can trail the sequential baseline even though other languages report multi-second absolute runtimes.
+- **Racket:** We have explicit sequential baselines and multi-worker sweeps, so we can quantify 4–7× gains on the most parallel-friendly workloads.
+- **Other languages on CLBG:** Only absolute runtimes are published; the implied speedup is whatever the submitter achieved relative to an unpublished single-threaded baseline. In practice, many fastest entries are single-threaded (CPU secs ≈ wall secs), which means their published “speedup” is effectively 1× even if the language could scale.
 
-### Takeaways
+## 4. Takeaways
 
-- Focus optimization work on the string-heavy benchmarks (regex-dna, k-nucleotide) where both Racket’s internal scaling and relative standing to other languages lag.
-- For kernels already showing 4–7× speedups, the main portability question is workload parity; rerunning with the CLBG input sizes would help determine whether Racket can keep its lead once the problem sizes match exactly.
-- When communicating results externally, always mention worker count, input size, and hardware so readers can convert the raw numbers to the CLBG baseline they are familiar with.
+1. **Racket’s parallel scaling is directly measurable.** The instrumentation built into this repo makes it easy to report sequential vs. multi-worker behavior, and the results show genuinely strong scaling on compute-bound kernels.
+2. **External comparisons should stress methodology.** When presenting numbers next to CLBG languages, note that their figures are single data points on different hardware and inputs; they do *not* demonstrate parallel speedups. Any claims about relative scaling would require running those languages through the same multi-worker harness used here.
+3. **Future work.** To produce a like-for-like comparison, rerun the Rust/OCaml/Haskell/Java/Python reference implementations locally using this suite’s log+analysis pipeline. That would yield both absolute times on identical hardware and true speedup metrics instead of single CLBG runtimes.
