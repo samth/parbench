@@ -12,17 +12,34 @@
          make-graph
          generate-random-graph)
 
-;; Graph representation: vector of adjacency lists
-;; graph[i] is a list of neighbors of vertex i
+;; Graph representation: vector of adjacency vectors
+;; graph[i] is a vector of neighbors of vertex i
 (struct graph (vertices adjacency) #:transparent)
 
 (define (make-graph n edges)
-  (define adj (make-vector n '()))
+  ;; Two-pass construction for better memory layout
+  ;; Pass 1: Count degree of each vertex
+  (define degrees (make-vector n 0))
   (for ([edge (in-list edges)])
     (match-define (list u v) edge)
-    ;; Undirected graph: add both directions
-    (vector-set! adj u (cons v (vector-ref adj u)))
-    (vector-set! adj v (cons u (vector-ref adj v))))
+    (vector-set! degrees u (+ 1 (vector-ref degrees u)))
+    (vector-set! degrees v (+ 1 (vector-ref degrees v))))
+
+  ;; Pass 2: Allocate neighbor vectors
+  (define adj (for/vector ([d (in-vector degrees)])
+                (make-vector d)))
+
+  ;; Pass 3: Fill neighbor vectors
+  (define positions (make-vector n 0))
+  (for ([edge (in-list edges)])
+    (match-define (list u v) edge)
+    (define u-pos (vector-ref positions u))
+    (define v-pos (vector-ref positions v))
+    (vector-set! (vector-ref adj u) u-pos v)
+    (vector-set! (vector-ref adj v) v-pos u)
+    (vector-set! positions u (+ u-pos 1))
+    (vector-set! positions v (+ v-pos 1)))
+
   (graph n adj))
 
 ;; Sequential BFS using a queue
@@ -38,7 +55,7 @@
   (let loop ()
     (unless (queue-empty? queue)
       (define u (dequeue! queue))
-      (for ([v (in-list (vector-ref adj u))])
+      (for ([v (in-vector (vector-ref adj u))])
         (when (= -1 (vector-ref parent v))
           (vector-set! parent v u)
           (enqueue! queue v)))
@@ -66,7 +83,7 @@
                   (for/fold ([next '()])
                             ([u (in-list current-frontier)])
                     (append next
-                            (for/list ([v (in-list (vector-ref adj u))])
+                            (for/list ([v (in-vector (vector-ref adj u))])
                               ;; Check and set parent (race condition is benign)
                               (define old (vector-ref parent v))
                               (and (= old -1)
@@ -90,7 +107,7 @@
                                (for/fold ([next '()])
                                          ([u (in-list chunk)])
                                  (append next
-                                         (for/list ([v (in-list (vector-ref adj u))])
+                                         (for/list ([v (in-vector (vector-ref adj u))])
                                            (and (= -1 (vector-ref parent v))
                                                 (begin
                                                   (vector-set! parent v u)

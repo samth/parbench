@@ -27,51 +27,70 @@
 
 ;; Sequential deduplication using hash table
 (define (dedup-sequential data)
+  (define n (vector-length data))
   (define seen (make-hash))
-  (define result (make-vector 0))
+  (define result (make-vector n))  ; Pre-allocate max possible size
+  (define count 0)
   (for ([elem (in-vector data)])
     (unless (hash-has-key? seen elem)
       (hash-set! seen elem #t)
-      (set! result (vector-append result (vector elem)))))
-  result)
+      (vector-set! result count elem)
+      (set! count (+ count 1))))
+  (vector-copy result 0 count))  ; Trim to actual size
 
 ;; Parallel deduplication using bucketing
 (define (dedup-parallel data workers)
   (define n (vector-length data))
   (define num-buckets (* workers 4))  ; Use more buckets than workers
 
-  ;; Step 1: Partition data into buckets based on hash
-  (define buckets (make-vector num-buckets '()))
+  ;; Step 1: Count elements per bucket
+  (define bucket-counts (make-vector num-buckets 0))
   (for ([elem (in-vector data)])
     (define bucket-idx (modulo (equal-hash-code elem) num-buckets))
-    (vector-set! buckets bucket-idx
-                 (cons elem (vector-ref buckets bucket-idx))))
+    (vector-set! bucket-counts bucket-idx
+                 (+ 1 (vector-ref bucket-counts bucket-idx))))
 
-  ;; Step 2: Deduplicate each bucket in parallel
-  (define (dedupe-bucket bucket-list)
+  ;; Step 2: Allocate bucket vectors
+  (define buckets
+    (for/vector ([count (in-vector bucket-counts)])
+      (make-vector count)))
+
+  ;; Step 3: Fill buckets
+  (define bucket-positions (make-vector num-buckets 0))
+  (for ([elem (in-vector data)])
+    (define bucket-idx (modulo (equal-hash-code elem) num-buckets))
+    (define pos (vector-ref bucket-positions bucket-idx))
+    (define bucket (vector-ref buckets bucket-idx))
+    (vector-set! bucket pos elem)
+    (vector-set! bucket-positions bucket-idx (+ pos 1)))
+
+  ;; Step 4: Deduplicate each bucket in parallel
+  (define (dedupe-bucket bucket-vec)
     (define seen (make-hash))
-    (define deduped '())
-    (for ([elem (in-list (reverse bucket-list))])  ; Reverse to preserve order
+    (define result (make-vector (vector-length bucket-vec)))
+    (define count 0)
+    (for ([elem (in-vector bucket-vec)])
       (unless (hash-has-key? seen elem)
         (hash-set! seen elem #t)
-        (set! deduped (cons elem deduped))))
-    (reverse deduped))
+        (vector-set! result count elem)
+        (set! count (+ count 1))))
+    (vector-copy result 0 count))
 
-  (define deduped-lists
+  (define deduped-vecs
     (if (<= workers 1)
-        (for/list ([bucket-idx (in-range num-buckets)])
-          (dedupe-bucket (vector-ref buckets bucket-idx)))
+        (for/list ([bucket (in-vector buckets)])
+          (dedupe-bucket bucket))
         (call-with-thread-pool workers
           (λ (pool actual-workers)
             (define tasks
-              (for/list ([bucket-idx (in-range num-buckets)])
+              (for/list ([bucket (in-vector buckets)])
                 (thread-pool-submit pool
-                                    (λ () (dedupe-bucket (vector-ref buckets bucket-idx))))))
+                                    (λ () (dedupe-bucket bucket)))))
             (thread-pool-wait/collect tasks))
           #:max num-buckets)))
 
-  ;; Step 4: Flatten results
-  (list->vector (apply append deduped-lists)))
+  ;; Step 5: Concatenate results
+  (apply vector-append deduped-vecs))
 
 (module+ main
   (define n 1000000)
