@@ -10,8 +10,7 @@
 (require racket/fixnum
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide bignum-add-sequential
          bignum-add-parallel
@@ -34,47 +33,47 @@
 ;; Parallel bignum addition - compute sums in parallel, then propagate carries
 (define (bignum-add-parallel a b workers [chunk-size 1000])
   (define n (vector-length a))
-  (call-with-thread-pool workers
-    (λ (pool actual-workers)
-      ;; Phase 1: Compute local sums and carries in parallel
-      (define num-chunks (quotient (+ n chunk-size -1) chunk-size))
-      (define chunks
-        (thread-pool-wait/collect
-         (for/list ([c (in-range num-chunks)])
-           (define start (* c chunk-size))
-           (define end (min (+ start chunk-size) n))
-           (thread-pool-submit
-            pool
-            (λ ()
-              (define local-result (make-vector (- end start) 0))
-              (define carry 0)
-              (for ([i (in-range start end)])
-                (define local-i (- i start))
-                (define sum (fx+ (fx+ (vector-ref a i) (vector-ref b i)) carry))
-                (vector-set! local-result local-i (fxmodulo sum BASE))
-                (set! carry (fxquotient sum BASE)))
-              (cons local-result carry))))))
+  (define num-chunks (quotient (+ n chunk-size -1) chunk-size))
 
-      ;; Phase 2: Sequential carry propagation between chunks
-      (define result (make-vector n 0))
-      (define carry 0)
-      (for ([c (in-range num-chunks)])
-        (define start (* c chunk-size))
-        (define end (min (+ start chunk-size) n))
-        (define-values (local-result local-carry) (values (car (list-ref chunks c))
-                                                           (cdr (list-ref chunks c))))
+  ;; Phase 1: Compute local sums and carries in parallel
+  (define channels
+    (for/list ([c (in-range num-chunks)])
+      (define ch (make-channel))
+      (define start (* c chunk-size))
+      (define end (min (+ start chunk-size) n))
+      (thread
+       (λ ()
+         (define local-result (make-vector (- end start) 0))
+         (define carry 0)
+         (for ([i (in-range start end)])
+           (define local-i (- i start))
+           (define sum (fx+ (fx+ (vector-ref a i) (vector-ref b i)) carry))
+           (vector-set! local-result local-i (fxmodulo sum BASE))
+           (set! carry (fxquotient sum BASE)))
+         (channel-put ch (cons local-result carry))))
+      ch))
 
-        ;; Copy local results with incoming carry
-        (for ([i (in-range (- end start))])
-          (define val (fx+ (vector-ref local-result i) carry))
-          (vector-set! result (+ start i) (fxmodulo val BASE))
-          (set! carry (fxquotient val BASE)))
+  (define chunks (map channel-get channels))
 
-        ;; Add local carry
-        (set! carry (fx+ carry local-carry)))
+  ;; Phase 2: Sequential carry propagation between chunks
+  (define result (make-vector n 0))
+  (define carry 0)
+  (for ([c (in-range num-chunks)])
+    (define start (* c chunk-size))
+    (define end (min (+ start chunk-size) n))
+    (define-values (local-result local-carry) (values (car (list-ref chunks c))
+                                                       (cdr (list-ref chunks c))))
 
-      (values result carry))
-    #:max n))
+    ;; Copy local results with incoming carry
+    (for ([i (in-range (- end start))])
+      (define val (fx+ (vector-ref local-result i) carry))
+      (vector-set! result (+ start i) (fxmodulo val BASE))
+      (set! carry (fxquotient val BASE)))
+
+    ;; Add local carry
+    (set! carry (fx+ carry local-carry)))
+
+  (values result carry))
 
 ;; Generate random bignum of n digits (base BASE)
 (define (make-random-bignum n seed)
@@ -107,6 +106,7 @@
   (define log-path #f)
   (define chunk-size 1000)
   (define seed 42)
+  (define skip-sequential #f)
 
   (void
    (command-line
@@ -123,7 +123,9 @@
     [("--seed") arg "Random seed"
      (set! seed (parse-positive-integer arg 'bignum-add))]
     [("--log") arg "S-expression log path"
-     (set! log-path arg)]))
+     (set! log-path arg)]
+    [("--skip-sequential") "Skip sequential variant"
+     (set! skip-sequential #t)]))
 
   (printf "Generating random bignums (n=~a digits, base=~a)...\n" n BASE)
   (define a (make-random-bignum n seed))
@@ -137,16 +139,21 @@
                        (list 'workers workers)
                        (list 'seed seed)))
 
-  (printf "Running sequential bignum addition...\n")
-  (define-values (seq-result seq-carry)
-    (run-benchmark
-     (λ () (bignum-add-sequential a b))
-     #:name 'bignum-add
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (define seq-carry #f)
+  (unless skip-sequential
+    (printf "Running sequential bignum addition...\n")
+    (define-values (sr sc)
+      (run-benchmark
+       (λ () (bignum-add-sequential a b))
+       #:name 'bignum-add
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata))
+    (set! seq-result sr)
+    (set! seq-carry sc))
 
   (printf "Running parallel bignum addition (workers=~a, chunk-size=~a)...\n"
           workers chunk-size)
@@ -161,15 +168,16 @@
      #:metadata metadata
      #:check (λ (iteration result)
                (define-values (r c) (values (car result) (cdr result)))
-               (unless (and (bignum-equal? seq-result r) (fx= seq-carry c))
+               (when (and seq-result (not (and (bignum-equal? seq-result r) (fx= seq-carry c))))
                  (error 'bignum-add "parallel result mismatch at iteration ~a" iteration)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (and (bignum-equal? seq-result par-result) (fx= seq-carry par-carry))
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (and (bignum-equal? seq-result par-result) (fx= seq-carry par-carry))
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
-  (printf "\nResult (base ~a): ~a\n" BASE (format-bignum seq-result))
-  (printf "Final carry: ~a\n" seq-carry))
+  (printf "\nResult (base ~a): ~a\n" BASE (format-bignum par-result))
+  (printf "Final carry: ~a\n" par-carry))

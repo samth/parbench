@@ -9,8 +9,7 @@
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
-         "../common/run.rkt"
-         "../common/parallel.rkt")
+         "../common/run.rkt")
 
 (provide tokens-sequential
          tokens-parallel
@@ -82,19 +81,16 @@
     [(or (<= workers 1) (zero? len))
      (tokens-sequential text)]
     [else
-     (call-with-thread-pool workers
-       (λ (pool actual-workers)
-         (define task-count (max 1 (min actual-workers len)))
-         (define chunk-size (max 1 (ceiling (/ len task-count))))
-         (define threads
-           (for/list ([start (in-range 0 len chunk-size)])
-             (define end (min len (+ start chunk-size)))
-             (thread-pool-submit pool
-                                 (λ ()
-                                   (compute-token-chunk text start end len)))))
-         (define chunk-token-lists (thread-pool-wait/collect threads))
-         (apply append chunk-token-lists))
-       #:max len)]))
+     (let* ([task-count (max 1 (min workers len))]
+            [chunk-size (max 1 (ceiling (/ len task-count)))]
+            [channels
+             (for/list ([start (in-range 0 len chunk-size)])
+               (define end (min len (+ start chunk-size)))
+               (define ch (make-channel))
+               (thread (λ () (channel-put ch (compute-token-chunk text start end len))))
+               ch)]
+            [chunk-token-lists (map channel-get channels)])
+       (apply append chunk-token-lists))]))
 
 (module+ main
   (define size 1000000)
@@ -102,6 +98,7 @@
   (define workers 1)
   (define repeat 1)
   (define log-path "")
+  (define skip-sequential #f)
 
   (command-line
    #:program "tokens"
@@ -115,7 +112,9 @@
    [("--repeat") arg "Number of repetitions (default: 1)"
     (set! repeat (string->number arg))]
    [("--log") arg "Log file path"
-    (set! log-path arg)])
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential variant"
+    (set! skip-sequential #t)])
 
   ;; Generate input text
   (printf "Generating text with ~a words...\n" size)
@@ -127,16 +126,18 @@
                        (list 'seed seed)
                        (list 'workers workers)))
 
-  (printf "Running sequential tokens(size=~a)...\n" size)
-  (define seq-result
-    (run-benchmark
-     (λ () (tokens-sequential text))
-     #:name 'tokens
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential tokens(size=~a)...\n" size)
+    (set! seq-result
+      (run-benchmark
+       (λ () (tokens-sequential text))
+       #:name 'tokens
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel tokens(size=~a) (workers=~a)...\n" size workers)
   (define par-result
@@ -149,15 +150,16 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (= (length seq-result) (length result))
+               (when (and seq-result (not (= (length seq-result) (length result))))
                  (error 'tokens "parallel result mismatch at iteration ~a: expected ~a tokens, got ~a"
                         iteration (length seq-result) (length result))))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (= (length seq-result) (length par-result))
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (= (length seq-result) (length par-result))
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
-  (printf "Tokenized into ~a tokens\n" (length seq-result)))
+  (printf "Tokenized into ~a tokens\n" (length par-result)))

@@ -10,8 +10,7 @@
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
-         "../common/run.rkt"
-         "../common/parallel.rkt")
+         "../common/run.rkt")
 
 (provide subset-sum-sequential
          subset-sum-parallel)
@@ -76,14 +75,13 @@
     (if (<= workers 1)
         (for/or ([mask (in-range task-count)])
           (evaluate-mask mask))
-        (call-with-thread-pool workers
-          (λ (pool actual-workers)
-            (define tasks
-              (for/list ([mask (in-range task-count)])
-                (thread-pool-submit pool (λ () (evaluate-mask mask)))))
-            (for/or ([task (in-list tasks)])
-              (thread-pool-wait task)))
-          #:max task-count)))
+        (let ([channels
+               (for/list ([mask (in-range task-count)])
+                 (define ch (make-channel))
+                 (thread (λ () (channel-put ch (evaluate-mask mask))))
+                 ch)])
+          (for/or ([ch (in-list channels)])
+            (channel-get ch)))))
 
   (if (< n 4)
       (subset-sum-sequential bag goal)
@@ -97,6 +95,7 @@
   (define workers 1)
   (define repeat 1)
   (define log-path "")
+  (define skip-sequential #f)
 
   (command-line
    #:program "subset-sum"
@@ -114,7 +113,9 @@
    [("--repeat") arg "Number of repetitions (default: 1)"
     (set! repeat (string->number arg))]
    [("--log") arg "Log file path"
-    (set! log-path arg)])
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential variant"
+    (set! skip-sequential #t)])
 
   ;; Generate input data
   (define bag (generate-random-bag n max-value seed))
@@ -127,16 +128,18 @@
                        (list 'seed seed)
                        (list 'workers workers)))
 
-  (printf "Running sequential subset-sum(n=~a, goal=~a)...\n" n goal)
-  (define seq-result
-    (run-benchmark
-     (λ () (subset-sum-sequential bag goal))
-     #:name 'subset-sum
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential subset-sum(n=~a, goal=~a)...\n" n goal)
+    (set! seq-result
+      (run-benchmark
+       (λ () (subset-sum-sequential bag goal))
+       #:name 'subset-sum
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel subset-sum(n=~a, goal=~a) (workers=~a)...\n" n goal workers)
   (define par-result
@@ -149,15 +152,16 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (equal? seq-result result)
+               (when (and seq-result (not (equal? seq-result result)))
                  (error 'subset-sum "parallel result mismatch at iteration ~a: expected ~a, got ~a"
                         iteration seq-result result)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (equal? seq-result par-result)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (equal? seq-result par-result)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
-  (printf "subset-sum found: ~a\n" seq-result))
+  (printf "subset-sum found: ~a\n" par-result))

@@ -10,8 +10,7 @@
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
-         "../common/run.rkt"
-         "../common/parallel.rkt")
+         "../common/run.rkt")
 
 (provide primes-sequential
          primes-parallel)
@@ -117,20 +116,19 @@
      (if (<= workers 1)
          (for/sum ([seg (in-list segments)])
            (sieve-segment (car seg) (cdr seg)))
-         (call-with-thread-pool workers
-           (λ (pool actual-workers)
-             (define tasks
-               (for/list ([seg (in-list segments)])
-                 (thread-pool-submit pool
-                                     (λ () (sieve-segment (car seg) (cdr seg))))))
-             (apply + (thread-pool-wait/collect tasks)))
-           #:max (length segments)))))
+         (let ([channels
+                (for/list ([seg (in-list segments)])
+                  (define ch (make-channel))
+                  (thread (λ () (channel-put ch (sieve-segment (car seg) (cdr seg)))))
+                  ch)])
+           (apply + (map channel-get channels))))))
 
 (module+ main
   (define n 10000000)
   (define workers 1)
   (define repeat 1)
   (define log-path "")
+  (define skip-sequential #f)
 
   (command-line
    #:program "primes"
@@ -142,23 +140,27 @@
    [("--repeat") arg "Number of repetitions (default: 1)"
     (set! repeat (string->number arg))]
    [("--log") arg "Log file path"
-    (set! log-path arg)])
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential variant"
+    (set! skip-sequential #t)])
 
   (define writer (make-log-writer log-path))
   (define metadata (system-metadata))
   (define params (list (list 'n n)
                        (list 'workers workers)))
 
-  (printf "Running sequential primes(n=~a)...\n" n)
-  (define seq-result
-    (run-benchmark
-     (λ () (primes-sequential n))
-     #:name 'primes
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential primes(n=~a)...\n" n)
+    (set! seq-result
+      (run-benchmark
+       (λ () (primes-sequential n))
+       #:name 'primes
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel primes(n=~a) (workers=~a)...\n" n workers)
   (define par-result
@@ -171,15 +173,16 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (= seq-result result)
+               (when (and seq-result (not (= seq-result result)))
                  (error 'primes "parallel result mismatch at iteration ~a: expected ~a, got ~a"
                         iteration seq-result result)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (= seq-result par-result)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (= seq-result par-result)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
-  (printf "Found ~a primes up to ~a\n" seq-result n))
+  (printf "Found ~a primes up to ~a\n" par-result n))

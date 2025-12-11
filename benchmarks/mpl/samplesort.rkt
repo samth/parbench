@@ -13,8 +13,7 @@
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
-         "../common/run.rkt"
-         "../common/parallel.rkt")
+         "../common/run.rkt")
 
 (provide samplesort-sequential
          samplesort-parallel
@@ -86,14 +85,12 @@
        (if (<= workers 1)
            (for/list ([bucket-list (in-vector buckets)])
              (quicksort (list->vector bucket-list)))
-           (call-with-thread-pool workers
-             (λ (pool actual-workers)
-               (define tasks
-                 (for/list ([bucket-list (in-vector buckets)])
-                   (thread-pool-submit pool
-                                       (λ () (quicksort (list->vector bucket-list))))))
-               (thread-pool-wait/collect tasks))
-             #:max workers)))
+           (let ([channels
+                  (for/list ([bucket-list (in-vector buckets)])
+                    (define ch (make-channel))
+                    (thread (λ () (channel-put ch (quicksort (list->vector bucket-list)))))
+                    ch)])
+             (map channel-get channels))))
 
      ;; Step 5: Concatenate sorted buckets
      (apply vector-append sorted-buckets)]))
@@ -104,6 +101,7 @@
   (define workers 4)
   (define repeat 1)
   (define log-path "")
+  (define skip-sequential #f)
 
   (command-line
    #:program "samplesort"
@@ -117,7 +115,9 @@
    [("--repeat") arg "Number of repetitions (default: 1)"
     (set! repeat (string->number arg))]
    [("--log") arg "Log file path"
-    (set! log-path arg)])
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential variant"
+    (set! skip-sequential #t)])
 
   ;; Generate input data
   (printf "Generating random vector of size ~a...\n" n)
@@ -129,16 +129,18 @@
                        (list 'seed seed)
                        (list 'workers workers)))
 
-  (printf "Running sequential samplesort(n=~a)...\n" n)
-  (define seq-result
-    (run-benchmark
-     (λ () (samplesort-sequential data))
-     #:name 'samplesort
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential samplesort(n=~a)...\n" n)
+    (set! seq-result
+      (run-benchmark
+       (λ () (samplesort-sequential data))
+       #:name 'samplesort
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel samplesort(n=~a) (workers=~a)...\n" n workers)
   (define par-result
@@ -151,15 +153,16 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (equal? seq-result result)
+               (when (and seq-result (not (equal? seq-result result)))
                  (error 'samplesort "parallel result mismatch at iteration ~a"
                         iteration)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (equal? seq-result par-result)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (equal? seq-result par-result)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
   (printf "Sorted ~a elements\n" n))

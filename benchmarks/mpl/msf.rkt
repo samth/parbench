@@ -3,8 +3,7 @@
 (require racket/fixnum
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide msf-sequential
          msf-parallel
@@ -121,52 +120,50 @@
   (define msf-edges null)
 
   ;; Borůvka's algorithm: iteratively connect components
-  (call-with-thread-pool workers
-    (λ (pool actual-workers)
-      (let loop ()
-        ;; Find the lightest edge from each component in parallel
-        (define chunk-size (quotient (+ n actual-workers -1) actual-workers))
-        (define lightest-results
-          (thread-pool-wait/collect
-           (for/list ([w (in-range actual-workers)])
-             (define start (* w chunk-size))
-             (define end (min (+ start chunk-size) n))
-             (thread-pool-submit
-              pool
-              (λ ()
-                (define lightest (make-hash))
-                (for ([u (in-range start end)])
-                  (define u-root (uf-find! uf u))
-                  (for ([neighbor-weight (in-vector (vector-ref graph u))])
-                    (define v (car neighbor-weight))
-                    (define w (cdr neighbor-weight))
-                    (define v-root (uf-find! uf v))
-                    (when (not (= u-root v-root))
-                      (define current (hash-ref lightest u-root #f))
-                      (when (or (not current) (< w (third current)))
-                        (hash-set! lightest u-root (list u v w))))))
-                lightest)))))
+  (let loop ()
+    ;; Find the lightest edge from each component in parallel
+    (define chunk-size (quotient (+ n workers -1) workers))
+    (define channels
+      (for/list ([w (in-range workers)])
+        (define start (* w chunk-size))
+        (define end (min (+ start chunk-size) n))
+        (define ch (make-channel))
+        (thread
+         (λ ()
+           (define lightest (make-hash))
+           (for ([u (in-range start end)])
+             (define u-root (uf-find! uf u))
+             (for ([neighbor-weight (in-vector (vector-ref graph u))])
+               (define v (car neighbor-weight))
+               (define wt (cdr neighbor-weight))
+               (define v-root (uf-find! uf v))
+               (when (not (= u-root v-root))
+                 (define current (hash-ref lightest u-root #f))
+                 (when (or (not current) (< wt (third current)))
+                   (hash-set! lightest u-root (list u v wt))))))
+           (channel-put ch lightest)))
+        ch))
 
-        ;; Collect lightest edges from all workers
-        (define all-lightest (make-hash))
-        (for ([partial (in-list lightest-results)])
-          (for ([(root edge) (in-hash partial)])
-            (define current (hash-ref all-lightest root #f))
-            (when (or (not current) (< (third edge) (third current)))
-              (hash-set! all-lightest root edge))))
+    ;; Collect lightest edges from all workers
+    (define lightest-results (map channel-get channels))
+    (define all-lightest (make-hash))
+    (for ([partial (in-list lightest-results)])
+      (for ([(root edge) (in-hash partial)])
+        (define current (hash-ref all-lightest root #f))
+        (when (or (not current) (< (third edge) (third current)))
+          (hash-set! all-lightest root edge))))
 
-        ;; If no edges found, we're done
-        (when (> (hash-count all-lightest) 0)
-          ;; Add edges to MSF and union components
-          (for ([edge (in-hash-values all-lightest)])
-            (define u (first edge))
-            (define v (second edge))
-            (define w (third edge))
-            (unless (= (uf-find! uf u) (uf-find! uf v))
-              (uf-union! uf u v)
-              (set! msf-edges (cons edge msf-edges))))
-          (loop))))
-    #:max n)
+    ;; If no edges found, we're done
+    (when (> (hash-count all-lightest) 0)
+      ;; Add edges to MSF and union components
+      (for ([edge (in-hash-values all-lightest)])
+        (define u (first edge))
+        (define v (second edge))
+        (define wt (third edge))
+        (unless (= (uf-find! uf u) (uf-find! uf v))
+          (uf-union! uf u v)
+          (set! msf-edges (cons edge msf-edges))))
+      (loop)))
 
   (reverse msf-edges))
 
@@ -225,6 +222,7 @@
   (define repeat 3)
   (define log-path #f)
   (define seed 42)
+  (define skip-sequential #f)
 
   (void
    (command-line
@@ -243,7 +241,9 @@
     [("--seed") arg "Random seed"
      (set! seed (parse-positive-integer arg 'msf))]
     [("--log") arg "S-expression log path"
-     (set! log-path arg)]))
+     (set! log-path arg)]
+    [("--skip-sequential") "Skip sequential variant"
+     (set! skip-sequential #t)]))
 
   ;; Load or generate graph
   (define graph
@@ -268,16 +268,18 @@
                        (list 'workers workers)
                        (list 'seed seed)))
 
-  (printf "Running sequential MSF (Kruskal)...\n")
-  (define seq-result
-    (run-benchmark
-     (λ () (msf-sequential graph))
-     #:name 'msf
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential MSF (Kruskal)...\n")
+    (set! seq-result
+      (run-benchmark
+       (λ () (msf-sequential graph))
+       #:name 'msf
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel MSF (Borůvka, workers=~a)...\n" workers)
   (define par-result
@@ -290,22 +292,24 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (verify-spanning-forest graph result)
+               (when (and seq-result (not (verify-spanning-forest graph result)))
                  (error 'msf "parallel result verification failed at iteration ~a" iteration)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (and (verify-spanning-forest graph seq-result) (verify-spanning-forest graph par-result))
-      (printf "✓ Sequential and parallel results are valid spanning forests\n")
-      (printf "✗ Verification failed!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (and (verify-spanning-forest graph seq-result) (verify-spanning-forest graph par-result))
+        (printf "✓ Sequential and parallel results are valid spanning forests\n")
+        (printf "✗ Verification failed!\n")))
 
-  (define seq-weight (apply + (map third seq-result)))
   (define par-weight (apply + (map third par-result)))
   (printf "\nSpanning Forest Statistics:\n")
-  (printf "  Sequential: ~a edges, total weight ~a\n" (length seq-result) seq-weight)
+  (when seq-result
+    (define seq-weight (apply + (map third seq-result)))
+    (printf "  Sequential: ~a edges, total weight ~a\n" (length seq-result) seq-weight))
   (printf "  Parallel:   ~a edges, total weight ~a\n" (length par-result) par-weight)
 
-  (printf "\nSample edges (first 5 from sequential):\n")
-  (for ([edge (in-list (take seq-result (min 5 (length seq-result))))])
+  (printf "\nSample edges (first 5 from parallel):\n")
+  (for ([edge (in-list (take par-result (min 5 (length par-result))))])
     (printf "  (~a, ~a) weight=~a\n" (first edge) (second edge) (third edge))))

@@ -9,8 +9,7 @@
 
 (require "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide fib-sequential
          fib-parallel)
@@ -25,17 +24,14 @@
 ;; Parallel naive recursive Fibonacci with cutoff threshold
 ;; Below threshold, use sequential to avoid overhead
 (define (fib-parallel n workers [threshold 20])
-  (call-with-thread-pool workers
-    (λ (pool actual-workers)
-      (define (fib-par n)
-        (if (<= n threshold)
-            (fib-sequential n)
-            (let ([f1 (thread-pool-submit pool (λ () (fib-par (- n 1))))]
-                  [f2 (fib-par (- n 2))])
-              (+ (thread-pool-wait f1)
-                 f2))))
-      (fib-par n))
-    #:max (expt 2 (max 0 (- n threshold)))))
+  (define (fib-par n)
+    (if (<= n threshold)
+        (fib-sequential n)
+        (let* ([ch (make-channel)]
+               [_ (thread (λ () (channel-put ch (fib-par (- n 1)))))]
+               [f2 (fib-par (- n 2))])
+          (+ (channel-get ch) f2))))
+  (fib-par n))
 
 ;; Known Fibonacci values for verification
 (define fib-known
@@ -50,6 +46,7 @@
   (define repeat 3)
   (define log-path #f)
   (define threshold 20)
+  (define skip-sequential #f)
 
   (void
    (command-line
@@ -64,7 +61,9 @@
     [("--repeat") arg "Benchmark repetitions"
      (set! repeat (parse-positive-integer arg 'fib))]
     [("--log") arg "S-expression log path"
-     (set! log-path arg)]))
+     (set! log-path arg)]
+    [("--skip-sequential") "Skip sequential variant"
+     (set! skip-sequential #t)]))
 
   (define writer (make-log-writer log-path))
   (define metadata (system-metadata))
@@ -72,16 +71,18 @@
                        (list 'threshold threshold)
                        (list 'workers workers)))
 
-  (printf "Running sequential fib(~a)...\n" n)
-  (define seq-result
-    (run-benchmark
-     (λ () (fib-sequential n))
-     #:name 'fib
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential fib(~a)...\n" n)
+    (set! seq-result
+      (run-benchmark
+       (λ () (fib-sequential n))
+       #:name 'fib
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel fib(~a) (workers=~a, threshold=~a)...\n" n workers threshold)
   (define par-result
@@ -94,22 +95,23 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (= seq-result result)
+               (when (and seq-result (not (= seq-result result)))
                  (error 'fib "parallel result mismatch at iteration ~a: expected ~a, got ~a"
                         iteration seq-result result)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (= seq-result par-result)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (= seq-result par-result)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
-  (printf "fib(~a) = ~a\n" n seq-result)
+  (printf "fib(~a) = ~a\n" n par-result)
 
   ;; Check against known value if available
   (when (hash-has-key? fib-known n)
     (define expected (hash-ref fib-known n))
-    (if (= seq-result expected)
+    (if (= par-result expected)
         (printf "✓ Result matches known value\n")
-        (printf "✗ Result ~a does not match expected ~a!\n" seq-result expected))))
+        (printf "✗ Result ~a does not match expected ~a!\n" par-result expected))))

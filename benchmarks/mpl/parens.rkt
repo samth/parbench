@@ -10,8 +10,7 @@
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
-         "../common/run.rkt"
-         "../common/parallel.rkt")
+         "../common/run.rkt")
 
 (provide parens-sequential
          parens-parallel
@@ -63,16 +62,15 @@
   (define partial-results
     (if (<= workers 1)
         (list (process-range 0 n))
-        (call-with-thread-pool workers
-          (λ (pool actual-workers)
-            (define effective-workers (max 1 (min actual-workers n)))
-            (define chunk-size (max 1 (ceiling (/ n effective-workers))))
-            (define tasks
-              (for/list ([start (in-range 0 n chunk-size)])
-                (define end (min n (+ start chunk-size)))
-                (thread-pool-submit pool (λ () (process-range start end)))))
-            (thread-pool-wait/collect tasks))
-          #:max (ceiling (/ n (max 1 (min workers n)))))))
+        (let* ([effective-workers (max 1 (min workers n))]
+               [chunk-size (max 1 (ceiling (/ n effective-workers)))]
+               [channels
+                (for/list ([start (in-range 0 n chunk-size)])
+                  (define end (min n (+ start chunk-size)))
+                  (define ch (make-channel))
+                  (thread (λ () (channel-put ch (process-range start end))))
+                  ch)])
+          (map channel-get channels))))
 
   (define final-result
     (for/fold ([acc (cons 0 0)])
@@ -88,6 +86,7 @@
   (define workers 1)
   (define repeat 1)
   (define log-path "")
+  (define skip-sequential #f)
 
   (command-line
    #:program "parens"
@@ -99,7 +98,9 @@
    [("--repeat") arg "Number of repetitions (default: 1)"
     (set! repeat (string->number arg))]
    [("--log") arg "Log file path"
-    (set! log-path arg)])
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential variant"
+    (set! skip-sequential #t)])
 
   ;; Generate input data
   (define data (generate-parens n))
@@ -109,16 +110,18 @@
   (define params (list (list 'n n)
                        (list 'workers workers)))
 
-  (printf "Running sequential parens(n=~a)...\n" n)
-  (define seq-result
-    (run-benchmark
-     (λ () (parens-sequential data))
-     #:name 'parens
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential parens(n=~a)...\n" n)
+    (set! seq-result
+      (run-benchmark
+       (λ () (parens-sequential data))
+       #:name 'parens
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel parens(n=~a) (workers=~a)...\n" n workers)
   (define par-result
@@ -131,15 +134,16 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (equal? seq-result result)
+               (when (and seq-result (not (equal? seq-result result)))
                  (error 'parens "parallel result mismatch at iteration ~a: expected ~a, got ~a"
                         iteration seq-result result)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (equal? seq-result par-result)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (equal? seq-result par-result)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
-  (printf "parens balanced: ~a\n" seq-result))
+  (printf "parens balanced: ~a\n" par-result))

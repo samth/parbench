@@ -9,8 +9,7 @@
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
-         "../common/run.rkt"
-         "../common/parallel.rkt")
+         "../common/run.rkt")
 
 (provide word-count-sequential
          word-count-parallel
@@ -88,26 +87,21 @@
     [(or (<= workers 1) (zero? len))
      (word-count-sequential text)]
     [else
-     (call-with-thread-pool
-      workers
-      (λ (pool actual-workers)
-        (define task-count (max 1 (min actual-workers len)))
-        (define chunk-size (max 1 (ceiling (/ len task-count))))
-        (define threads
-          (for/list ([start (in-range 0 len chunk-size)])
-            (define end (min len (+ start chunk-size)))
-            (thread-pool-submit
-             pool
-             (λ ()
-               (compute-wc-chunk text start end)))))
-        (define summaries (thread-pool-wait/collect threads))
-        (define total-lines 0)
-        (define total-words 0)
-        (for ([summary (in-list summaries)])
-          (set! total-lines (+ total-lines (wc-chunk-lines summary)))
-          (set! total-words (+ total-words (wc-chunk-word-starts summary))))
-        (list total-lines total-words len))
-      #:max len)]))
+     (let* ([task-count (max 1 (min workers len))]
+            [chunk-size (max 1 (ceiling (/ len task-count)))]
+            [channels
+             (for/list ([start (in-range 0 len chunk-size)])
+               (define end (min len (+ start chunk-size)))
+               (define ch (make-channel))
+               (thread (λ () (channel-put ch (compute-wc-chunk text start end))))
+               ch)]
+            [summaries (map channel-get channels)])
+       (define total-lines 0)
+       (define total-words 0)
+       (for ([summary (in-list summaries)])
+         (set! total-lines (+ total-lines (wc-chunk-lines summary)))
+         (set! total-words (+ total-words (wc-chunk-word-starts summary))))
+       (list total-lines total-words len))]))
 
 (module+ main
   (define size 1000000)
@@ -115,6 +109,7 @@
   (define workers 1)
   (define repeat 1)
   (define log-path "")
+  (define skip-sequential #f)
 
   (command-line
    #:program "word-count"
@@ -128,7 +123,9 @@
    [("--repeat") arg "Number of repetitions (default: 1)"
     (set! repeat (string->number arg))]
    [("--log") arg "Log file path"
-    (set! log-path arg)])
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential variant"
+    (set! skip-sequential #t)])
 
   ;; Generate input text
   (printf "Generating text with ~a words...\n" size)
@@ -140,16 +137,18 @@
                        (list 'seed seed)
                        (list 'workers workers)))
 
-  (printf "Running sequential word-count(size=~a)...\n" size)
-  (define seq-result
-    (run-benchmark
-     (λ () (word-count-sequential text))
-     #:name 'word-count
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential word-count(size=~a)...\n" size)
+    (set! seq-result
+      (run-benchmark
+       (λ () (word-count-sequential text))
+       #:name 'word-count
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel word-count(size=~a) (workers=~a)...\n" size workers)
   (define par-result
@@ -162,16 +161,17 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (equal? seq-result result)
+               (when (and seq-result (not (equal? seq-result result)))
                  (error 'word-count "parallel result mismatch at iteration ~a: expected ~a, got ~a"
                         iteration seq-result result)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (equal? seq-result par-result)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (equal? seq-result par-result)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
-  (match-define (list lines words bytes) seq-result)
+  (match-define (list lines words bytes) par-result)
   (printf "Lines: ~a, Words: ~a, Bytes: ~a\n" lines words bytes))

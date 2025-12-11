@@ -9,8 +9,7 @@
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
-         "../common/run.rkt"
-         "../common/parallel.rkt")
+         "../common/run.rkt")
 
 (provide nqueens-sequential
          nqueens-parallel)
@@ -51,20 +50,20 @@
   ;; Parallelize over first row placements
   (if (<= workers 1)
       (nqueens-sequential n)
-      (call-with-thread-pool workers
-        (λ (pool actual-workers)
-          (define tasks
-            (for/list ([col (in-range n)])
-              (thread-pool-submit pool (λ () (search 1 (list col))))))
-          (for/sum ([task (in-list tasks)])
-            (thread-pool-wait task)))
-        #:max n)))
+      (let ([channels
+             (for/list ([col (in-range n)])
+               (define ch (make-channel))
+               (thread (λ () (channel-put ch (search 1 (list col)))))
+               ch)])
+        (for/sum ([ch (in-list channels)])
+          (channel-get ch)))))
 
 (module+ main
   (define n 12)
   (define workers 1)
   (define repeat 1)
   (define log-path "")
+  (define skip-sequential #f)
 
   (command-line
    #:program "nqueens"
@@ -76,23 +75,27 @@
    [("--repeat") arg "Number of repetitions (default: 1)"
     (set! repeat (string->number arg))]
    [("--log") arg "Log file path"
-    (set! log-path arg)])
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential variant"
+    (set! skip-sequential #t)])
 
   (define writer (make-log-writer log-path))
   (define metadata (system-metadata))
   (define params (list (list 'n n)
                        (list 'workers workers)))
 
-  (printf "Running sequential nqueens(~a)...\n" n)
-  (define seq-result
-    (run-benchmark
-     (λ () (nqueens-sequential n))
-     #:name 'nqueens
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential nqueens(~a)...\n" n)
+    (set! seq-result
+      (run-benchmark
+       (λ () (nqueens-sequential n))
+       #:name 'nqueens
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel nqueens(~a) (workers=~a)...\n" n workers)
   (define par-result
@@ -105,15 +108,16 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (= seq-result result)
+               (when (and seq-result (not (= seq-result result)))
                  (error 'nqueens "parallel result mismatch at iteration ~a: expected ~a, got ~a"
                         iteration seq-result result)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (= seq-result par-result)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (= seq-result par-result)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
-  (printf "nqueens(~a) = ~a solutions\n" n seq-result))
+  (printf "nqueens(~a) = ~a solutions\n" n par-result))

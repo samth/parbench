@@ -10,8 +10,7 @@
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
-         "../common/run.rkt"
-         "../common/parallel.rkt")
+         "../common/run.rkt")
 
 (provide triangle-count-sequential
          triangle-count-parallel
@@ -101,15 +100,14 @@
 
   (if (<= workers 1)
       (triangle-count-sequential graph)
-      (call-with-thread-pool workers
-        (λ (pool actual-workers)
-          (define chunk-size (max 1 (ceiling (/ n (max 1 (min actual-workers n))))))
-          (define tasks
-            (for/list ([start (in-range 0 n chunk-size)])
-              (define end (min n (+ start chunk-size)))
-              (thread-pool-submit pool (λ () (count-range start end)))))
-          (apply + (thread-pool-wait/collect tasks)))
-        #:max n)))
+      (let* ([chunk-size (max 1 (ceiling (/ n (max 1 (min workers n)))))]
+             [channels
+              (for/list ([start (in-range 0 n chunk-size)])
+                (define end (min n (+ start chunk-size)))
+                (define ch (make-channel))
+                (thread (λ () (channel-put ch (count-range start end))))
+                ch)])
+        (apply + (map channel-get channels)))))
 
 (module+ main
   (define n 1000)
@@ -118,6 +116,7 @@
   (define workers 1)
   (define repeat 1)
   (define log-path "")
+  (define skip-sequential #f)
 
   (command-line
    #:program "triangle-count"
@@ -133,7 +132,9 @@
    [("--repeat") arg "Number of repetitions (default: 1)"
     (set! repeat (string->number arg))]
    [("--log") arg "Log file path"
-    (set! log-path arg)])
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential variant"
+    (set! skip-sequential #t)])
 
   ;; Generate input graph
   (printf "Generating random graph with ~a vertices and ~a edges...\n" n num-edges)
@@ -146,16 +147,18 @@
                        (list 'seed seed)
                        (list 'workers workers)))
 
-  (printf "Running sequential triangle-count(n=~a, edges=~a)...\n" n num-edges)
-  (define seq-result
-    (run-benchmark
-     (λ () (triangle-count-sequential graph))
-     #:name 'triangle-count
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential triangle-count(n=~a, edges=~a)...\n" n num-edges)
+    (set! seq-result
+      (run-benchmark
+       (λ () (triangle-count-sequential graph))
+       #:name 'triangle-count
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel triangle-count(n=~a, edges=~a) (workers=~a)...\n" n num-edges workers)
   (define par-result
@@ -168,15 +171,16 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (= seq-result result)
+               (when (and seq-result (not (= seq-result result)))
                  (error 'triangle-count "parallel result mismatch at iteration ~a: expected ~a, got ~a"
                         iteration seq-result result)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (= seq-result par-result)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (= seq-result par-result)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
-  (printf "Found ~a triangles\n" seq-result))
+  (printf "Found ~a triangles\n" par-result))

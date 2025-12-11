@@ -9,8 +9,7 @@
 (require racket/fixnum
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide palindrome-sequential
          palindrome-parallel
@@ -33,24 +32,22 @@
       ;; Too small for parallelism
       (palindrome-sequential str)
       ;; Check chunks in parallel
-      (call-with-thread-pool workers
-        (λ (pool actual-workers)
-          (define num-chunks (quotient (+ half chunk-size -1) chunk-size))
-          (define results
-            (thread-pool-wait/collect
-             (for/list ([c (in-range num-chunks)])
-               (define start (* c chunk-size))
-               (define end (min (+ start chunk-size) half))
-               (thread-pool-submit
-                pool
-                (λ ()
-                  (for/and ([i (in-range start end)])
-                    (char=? (string-ref str i)
-                            (string-ref str (- n i 1)))))))))
-
-          ;; All chunks must return #t
-          (andmap values results))
-        #:max half)))
+      (let* ([num-chunks (quotient (+ half chunk-size -1) chunk-size)]
+             [channels
+              (for/list ([c (in-range num-chunks)])
+                (define start (* c chunk-size))
+                (define end (min (+ start chunk-size) half))
+                (define ch (make-channel))
+                (thread
+                 (λ ()
+                   (channel-put ch
+                     (for/and ([i (in-range start end)])
+                       (char=? (string-ref str i)
+                               (string-ref str (- n i 1)))))))
+                ch)]
+             [results (map channel-get channels)])
+        ;; All chunks must return #t
+        (andmap values results))))
 
 ;; Generate test string - palindrome or not
 (define (generate-test-string n palindrome? seed)
@@ -78,6 +75,7 @@
   (define log-path #f)
   (define chunk-size 10000)
   (define seed 42)
+  (define skip-sequential #f)
 
   (void
    (command-line
@@ -98,7 +96,9 @@
     [("--seed") arg "Random seed"
      (set! seed (parse-positive-integer arg 'palindrome))]
     [("--log") arg "S-expression log path"
-     (set! log-path arg)]))
+     (set! log-path arg)]
+    [("--skip-sequential") "Skip sequential variant"
+     (set! skip-sequential #t)]))
 
   (printf "Generating ~a string (n=~a)...\n"
           (if palindrome? "palindrome" "non-palindrome") n)
@@ -112,16 +112,18 @@
                        (list 'workers workers)
                        (list 'seed seed)))
 
-  (printf "Running sequential palindrome check...\n")
-  (define seq-result
-    (run-benchmark
-     (λ () (palindrome-sequential str))
-     #:name 'palindrome
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential palindrome check...\n")
+    (set! seq-result
+      (run-benchmark
+       (λ () (palindrome-sequential str))
+       #:name 'palindrome
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel palindrome check (workers=~a, chunk-size=~a)...\n"
           workers chunk-size)
@@ -135,19 +137,20 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (equal? seq-result result)
+               (when (and seq-result (not (equal? seq-result result)))
                  (error 'palindrome "parallel result mismatch at iteration ~a: expected ~a, got ~a"
                         iteration seq-result result)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (equal? seq-result par-result)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (equal? seq-result par-result)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
   (printf "Result: ~a (expected: ~a)\n"
-          (if seq-result "palindrome" "not palindrome")
+          (if par-result "palindrome" "not palindrome")
           (if palindrome? "palindrome" "not palindrome"))
 
   (when (<= n 100)

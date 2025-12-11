@@ -10,8 +10,7 @@
 (require racket/fixnum
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide shuffle-sequential
          shuffle-parallel
@@ -39,35 +38,30 @@
       ;; Too small for parallelism
       (shuffle-sequential vec seed)
       ;; Shuffle chunks in parallel
-      (call-with-thread-pool workers
-        (λ (pool actual-workers)
-          (define num-chunks (quotient (+ n chunk-size -1) chunk-size))
-
-          ;; Phase 1: Shuffle each chunk independently with different seeds
-          (define shuffled-chunks
-            (thread-pool-wait/collect
-             (for/list ([c (in-range num-chunks)])
-               (define start (* c chunk-size))
-               (define end (min (+ start chunk-size) n))
-               (thread-pool-submit
-                pool
-                (λ ()
-                  ;; Extract chunk, shuffle it
-                  (define chunk (make-vector (- end start)))
-                  (for ([i (in-range start end)])
-                    (vector-set! chunk (- i start) (vector-ref vec i)))
-                  (shuffle-sequential chunk (+ seed c)))))))
-
-          ;; Phase 2: Merge shuffled chunks back into result
-          (define result (make-vector n))
-          (for ([c (in-range num-chunks)])
-            (define start (* c chunk-size))
-            (define chunk (list-ref shuffled-chunks c))
-            (for ([i (in-range (vector-length chunk))])
-              (vector-set! result (+ start i) (vector-ref chunk i))))
-
-          result)
-        #:max n)))
+      (let* ([num-chunks (quotient (+ n chunk-size -1) chunk-size)]
+             ;; Phase 1: Shuffle each chunk independently with different seeds
+             [channels
+              (for/list ([c (in-range num-chunks)])
+                (define start (* c chunk-size))
+                (define end (min (+ start chunk-size) n))
+                (define ch (make-channel))
+                (thread
+                 (λ ()
+                   ;; Extract chunk, shuffle it
+                   (define chunk (make-vector (- end start)))
+                   (for ([i (in-range start end)])
+                     (vector-set! chunk (- i start) (vector-ref vec i)))
+                   (channel-put ch (shuffle-sequential chunk (+ seed c)))))
+                ch)]
+             [shuffled-chunks (map channel-get channels)])
+        ;; Phase 2: Merge shuffled chunks back into result
+        (define result (make-vector n))
+        (for ([c (in-range num-chunks)])
+          (define start (* c chunk-size))
+          (define chunk (list-ref shuffled-chunks c))
+          (for ([i (in-range (vector-length chunk))])
+            (vector-set! result (+ start i) (vector-ref chunk i))))
+        result)))
 
 ;; Verify that result is a permutation of original
 (define (verify-permutation original shuffled)
@@ -96,6 +90,7 @@
   (define log-path #f)
   (define chunk-size 10000)
   (define seed 42)
+  (define skip-sequential #f)
 
   (void
    (command-line
@@ -112,7 +107,9 @@
     [("--seed") arg "Random seed"
      (set! seed (parse-positive-integer arg 'shuffle))]
     [("--log") arg "S-expression log path"
-     (set! log-path arg)]))
+     (set! log-path arg)]
+    [("--skip-sequential") "Skip sequential variant"
+     (set! skip-sequential #t)]))
 
   (printf "Generating input vector (n=~a)...\n" n)
   (define input (make-input-vector n))
@@ -124,16 +121,18 @@
                        (list 'workers workers)
                        (list 'seed seed)))
 
-  (printf "Running sequential shuffle...\n")
-  (define seq-result
-    (run-benchmark
-     (λ () (shuffle-sequential input seed))
-     #:name 'shuffle
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential shuffle...\n")
+    (set! seq-result
+      (run-benchmark
+       (λ () (shuffle-sequential input seed))
+       #:name 'shuffle
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel shuffle (workers=~a, chunk-size=~a)...\n"
           workers chunk-size)
@@ -147,23 +146,25 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (verify-permutation input result)
+               (when (and seq-result (not (verify-permutation input result)))
                  (error 'shuffle "parallel result is not a valid permutation at iteration ~a"
                         iteration)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification:\n")
-  (printf "  Sequential is permutation: ~a\n"
-          (if (verify-permutation input seq-result) "✓" "✗"))
-  (printf "  Parallel is permutation: ~a\n"
-          (if (verify-permutation input par-result) "✓" "✗"))
-  (printf "  Sequential shuffled: ~a\n"
-          (if (different? input seq-result) "✓" "✗"))
-  (printf "  Parallel shuffled: ~a\n"
-          (if (different? input par-result) "✓" "✗"))
+  (unless skip-sequential
+    (printf "\nVerification:\n")
+    (printf "  Sequential is permutation: ~a\n"
+            (if (verify-permutation input seq-result) "✓" "✗"))
+    (printf "  Parallel is permutation: ~a\n"
+            (if (verify-permutation input par-result) "✓" "✗"))
+    (printf "  Sequential shuffled: ~a\n"
+            (if (different? input seq-result) "✓" "✗"))
+    (printf "  Parallel shuffled: ~a\n"
+            (if (different? input par-result) "✓" "✗")))
 
   (when (<= n 20)
     (printf "\nOriginal: ~a\n" input)
-    (printf "Sequential: ~a\n" seq-result)
+    (when seq-result
+      (printf "Sequential: ~a\n" seq-result))
     (printf "Parallel: ~a\n" par-result)))

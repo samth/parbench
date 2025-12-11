@@ -10,8 +10,7 @@
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
-         "../common/run.rkt"
-         "../common/parallel.rkt")
+         "../common/run.rkt")
 
 (provide dedup-sequential
          dedup-parallel
@@ -61,14 +60,14 @@
     (if (<= workers 1)
         (for/list ([bucket-idx (in-range num-buckets)])
           (dedupe-bucket (vector-ref buckets bucket-idx)))
-        (call-with-thread-pool workers
-          (λ (pool actual-workers)
-            (define tasks
-              (for/list ([bucket-idx (in-range num-buckets)])
-                (thread-pool-submit pool
-                                    (λ () (dedupe-bucket (vector-ref buckets bucket-idx))))))
-            (thread-pool-wait/collect tasks))
-          #:max num-buckets)))
+        (let ([channels
+               (for/list ([bucket-idx (in-range num-buckets)])
+                 (define ch (make-channel))
+                 (thread
+                  (λ ()
+                    (channel-put ch (dedupe-bucket (vector-ref buckets bucket-idx)))))
+                 ch)])
+          (map channel-get channels))))
 
   ;; Step 4: Flatten results
   (list->vector (apply append deduped-lists)))
@@ -80,6 +79,7 @@
   (define workers 1)
   (define repeat 1)
   (define log-path "")
+  (define skip-sequential #f)
 
   (command-line
    #:program "dedup"
@@ -95,7 +95,9 @@
    [("--repeat") arg "Number of repetitions (default: 1)"
     (set! repeat (string->number arg))]
    [("--log") arg "Log file path"
-    (set! log-path arg)])
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential variant"
+    (set! skip-sequential #t)])
 
   ;; Generate input data
   (define data (generate-data-with-duplicates n num-unique seed))
@@ -107,16 +109,18 @@
                        (list 'seed seed)
                        (list 'workers workers)))
 
-  (printf "Running sequential dedup(n=~a, unique=~a)...\n" n num-unique)
-  (define seq-result
-    (run-benchmark
-     (λ () (dedup-sequential data))
-     #:name 'dedup
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential dedup(n=~a, unique=~a)...\n" n num-unique)
+    (set! seq-result
+      (run-benchmark
+       (λ () (dedup-sequential data))
+       #:name 'dedup
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel dedup(n=~a, unique=~a) (workers=~a)...\n" n num-unique workers)
   (define par-result
@@ -131,11 +135,14 @@
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (printf "Sequential: ~a unique, Parallel: ~a unique\n"
-          (vector-length seq-result)
-          (vector-length par-result))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (printf "Sequential: ~a unique, Parallel: ~a unique\n"
+            (vector-length seq-result)
+            (vector-length par-result))
 
-  (if (= (vector-length seq-result) (vector-length par-result))
-      (printf "✓ Sequential and parallel counts match\n")
-      (printf "✗ Counts differ!\n")))
+    (if (= (vector-length seq-result) (vector-length par-result))
+        (printf "✓ Sequential and parallel counts match\n")
+        (printf "✗ Counts differ!\n")))
+
+  (printf "Deduplication complete: ~a unique elements\n" (vector-length par-result)))

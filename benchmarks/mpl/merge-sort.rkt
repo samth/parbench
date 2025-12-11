@@ -9,8 +9,7 @@
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
-         "../common/run.rkt"
-         "../common/parallel.rkt")
+         "../common/run.rkt")
 
 (provide merge-sort-sequential
          merge-sort-parallel
@@ -71,30 +70,28 @@
   (define (sorted-subvector v)
     (merge-sort-sequential v))
 
+  (define (parallel-merge-sort v depth)
+    (define len (vector-length v))
+    (cond
+      [(<= len threshold) (sorted-subvector v)]
+      [(<= len 1) v]
+      [else
+       (define mid (quotient len 2))
+       (define left-vec (vector-copy v 0 mid))
+       (define right-vec (vector-copy v mid))
+       (if (< depth 3)
+           (let* ([ch (make-channel)]
+                  [_ (thread (λ () (channel-put ch (parallel-merge-sort left-vec (add1 depth)))))]
+                  [right-sorted (parallel-merge-sort right-vec (add1 depth))]
+                  [left-sorted (channel-get ch)])
+             (merge left-sorted right-sorted))
+           (let ([left-sorted (parallel-merge-sort left-vec (add1 depth))]
+                 [right-sorted (parallel-merge-sort right-vec (add1 depth))])
+             (merge left-sorted right-sorted)))]))
+
   (if (<= workers 1)
       (merge-sort-sequential vec)
-      (call-with-thread-pool workers
-        (λ (pool actual-workers)
-          (define (parallel-merge-sort v depth)
-            (define len (vector-length v))
-            (cond
-              [(<= len threshold) (sorted-subvector v)]
-              [(<= len 1) v]
-              [else
-               (define mid (quotient len 2))
-               (define left-vec (vector-copy v 0 mid))
-               (define right-vec (vector-copy v mid))
-               (if (< depth 3)
-                   (let ([left-task (thread-pool-submit pool
-                                                        (λ () (parallel-merge-sort left-vec (add1 depth))))])
-                     (define right-sorted (parallel-merge-sort right-vec (add1 depth)))
-                     (define left-sorted (thread-pool-wait left-task))
-                     (merge left-sorted right-sorted))
-                   (let ([left-sorted (parallel-merge-sort left-vec (add1 depth))]
-                         [right-sorted (parallel-merge-sort right-vec (add1 depth))])
-                     (merge left-sorted right-sorted)))]))
-          (parallel-merge-sort vec 0))
-        #:max #f)))
+      (parallel-merge-sort vec 0)))
 
 (module+ main
   (define n 1000000)
@@ -103,6 +100,7 @@
   (define threshold 1000)
   (define repeat 1)
   (define log-path "")
+  (define skip-sequential #f)
 
   (command-line
    #:program "merge-sort"
@@ -118,7 +116,9 @@
    [("--repeat") arg "Number of repetitions (default: 1)"
     (set! repeat (string->number arg))]
    [("--log") arg "Log file path"
-    (set! log-path arg)])
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential variant"
+    (set! skip-sequential #t)])
 
   ;; Generate input data
   (printf "Generating random vector of size ~a...\n" n)
@@ -131,16 +131,18 @@
                        (list 'threshold threshold)
                        (list 'workers workers)))
 
-  (printf "Running sequential merge-sort(n=~a)...\n" n)
-  (define seq-result
-    (run-benchmark
-     (λ () (merge-sort-sequential data))
-     #:name 'merge-sort
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential merge-sort(n=~a)...\n" n)
+    (set! seq-result
+      (run-benchmark
+       (λ () (merge-sort-sequential data))
+       #:name 'merge-sort
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel merge-sort(n=~a) (workers=~a, threshold=~a)...\n" n workers threshold)
   (define par-result
@@ -153,15 +155,16 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (equal? seq-result result)
+               (when (and seq-result (not (equal? seq-result result)))
                  (error 'merge-sort "parallel result mismatch at iteration ~a"
                         iteration)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (equal? seq-result par-result)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (equal? seq-result par-result)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
   (printf "Sorted ~a elements\n" n))

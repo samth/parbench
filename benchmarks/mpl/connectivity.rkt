@@ -9,8 +9,7 @@
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
-         "../common/run.rkt"
-         "../common/parallel.rkt")
+         "../common/run.rkt")
 
 (provide connectivity-sequential
          connectivity-parallel
@@ -110,6 +109,7 @@
   (define workers 1)
   (define repeat 1)
   (define log-path "")
+  (define skip-sequential #f)
 
   (command-line
    #:program "connectivity"
@@ -125,7 +125,9 @@
    [("--repeat") arg "Number of repetitions (default: 1)"
     (set! repeat (string->number arg))]
    [("--log") arg "Log file path"
-    (set! log-path arg)])
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential variant"
+    (set! skip-sequential #t)])
 
   ;; Generate input graph
   (printf "Generating random graph with ~a vertices and ~a edges...\n" n num-edges)
@@ -138,16 +140,18 @@
                        (list 'seed seed)
                        (list 'workers workers)))
 
-  (printf "Running sequential connectivity(n=~a, edges=~a)...\n" n num-edges)
-  (define seq-result
-    (run-benchmark
-     (λ () (connectivity-sequential graph))
-     #:name 'connectivity
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential connectivity(n=~a, edges=~a)...\n" n num-edges)
+    (set! seq-result
+      (run-benchmark
+       (λ () (connectivity-sequential graph))
+       #:name 'connectivity
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel connectivity(n=~a, edges=~a) (workers=~a)...\n" n num-edges workers)
   (define par-result
@@ -162,12 +166,13 @@
 
   (close-log-writer writer)
 
-  (define seq-components (count-components seq-result n))
   (define par-components (count-components par-result n))
 
-  (printf "\nVerification: ")
-  (if (= seq-components par-components)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (define seq-components (count-components seq-result n))
+    (printf "\nVerification: ")
+    (if (= seq-components par-components)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
-  (printf "Found ~a connected components\n" seq-components))
+  (printf "Found ~a connected components\n" par-components))

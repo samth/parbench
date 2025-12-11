@@ -4,8 +4,7 @@
          data/queue
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide bfs-sequential
          bfs-parallel
@@ -47,65 +46,60 @@
   parent)
 
 ;; Parallel BFS using level-synchronous approach with atomic operations
+;; Uses vectors for frontier to avoid O(n²) list append operations
 (define (bfs-parallel g source workers)
   (define n (graph-vertices g))
   (define adj (graph-adjacency g))
   (define parent (make-vector n -1))
   (vector-set! parent source source)
 
-  (call-with-thread-pool workers
-    (λ (pool actual-workers)
-      (let loop ([current-frontier (list source)])
-        (unless (null? current-frontier)
-          (define frontier-size (length current-frontier))
-          (when (> frontier-size 0)
-            ;; Process frontier in parallel
-            (define next-frontier
-              (if (<= frontier-size actual-workers)
-                  ;; Small frontier: process sequentially
-                  (for/fold ([next '()])
-                            ([u (in-list current-frontier)])
-                    (append next
-                            (for/list ([v (in-list (vector-ref adj u))])
-                              ;; Check and set parent (race condition is benign)
-                              (define old (vector-ref parent v))
-                              (and (= old -1)
-                                   (let ([new-parent u])
-                                     (when (= -1 (vector-ref parent v))
-                                       (vector-set! parent v new-parent)
-                                       v))))))
-                  ;; Large frontier: process in parallel chunks
-                  (let* ([chunk-size (quotient (+ frontier-size actual-workers -1) actual-workers)]
-                         [chunks (for/list ([w (in-range actual-workers)])
-                                   (define start (* w chunk-size))
-                                   (define end (min (+ start chunk-size) frontier-size))
-                                   (if (>= start frontier-size)
-                                       '()
-                                       (take (drop current-frontier start) (- end start))))]
-                         [threads
-                          (for/list ([chunk (in-list chunks)] #:when (not (null? chunk)))
-                            (thread-pool-submit
-                             pool
+  ;; Use a vector for the frontier instead of a list
+  (let loop ([current-frontier (vector source)]
+             [frontier-size 1])
+    (when (> frontier-size 0)
+      ;; Collect next frontier vertices
+      (define next-frontier
+        (if (<= frontier-size 100)
+            ;; Small frontier: process sequentially, collect into list then convert
+            (list->vector
+             (for*/list ([i (in-range frontier-size)]
+                         [u (in-value (vector-ref current-frontier i))]
+                         [v (in-list (vector-ref adj u))]
+                         #:when (and (= -1 (vector-ref parent v))
+                                     (begin
+                                       (vector-set! parent v u)
+                                       #t)))
+               v))
+            ;; Large frontier: process in parallel chunks
+            (let* ([chunk-size (max 1 (quotient frontier-size workers))]
+                   [channels
+                    (for/list ([w (in-range workers)])
+                      (define start (* w chunk-size))
+                      (define end (if (= w (sub1 workers))
+                                      frontier-size
+                                      (min (+ start chunk-size) frontier-size)))
+                      (if (>= start frontier-size)
+                          #f
+                          (let ([ch (make-channel)])
+                            (thread
                              (λ ()
-                               (for/fold ([next '()])
-                                         ([u (in-list chunk)])
-                                 (append next
-                                         (for/list ([v (in-list (vector-ref adj u))])
-                                           (and (= -1 (vector-ref parent v))
-                                                (begin
-                                                  (vector-set! parent v u)
-                                                  v))))))))])
-                    (apply append
-                           (for/list ([t (in-list threads)])
-                             (thread-pool-wait t))))))
+                               (channel-put ch
+                                 (for*/list ([i (in-range start end)]
+                                             [u (in-value (vector-ref current-frontier i))]
+                                             [v (in-list (vector-ref adj u))]
+                                             #:when (and (= -1 (vector-ref parent v))
+                                                         (begin
+                                                           (vector-set! parent v u)
+                                                           #t)))
+                                   v))))
+                            ch)))]
+                   [results (for/list ([ch (in-list channels)] #:when ch)
+                              (channel-get ch))])
+              (list->vector (apply append results)))))
 
-            ;; Remove #f values and duplicates from next-frontier
-            (define clean-frontier
-              (remove-duplicates
-               (filter (λ (x) x) next-frontier)))
-
-            (loop clean-frontier)))))
-    #:max n)
+      (define next-size (vector-length next-frontier))
+      (when (> next-size 0)
+        (loop next-frontier next-size))))
 
   parent)
 
@@ -152,6 +146,7 @@
   (define log-path #f)
   (define seed 42)
   (define graph-type 'random)  ; 'random or 'grid
+  (define skip-sequential #f)
 
   (void
    (command-line
@@ -172,7 +167,9 @@
     [("--graph-type") arg "Graph type: random or grid"
      (set! graph-type (string->symbol arg))]
     [("--log") arg "S-expression log path"
-     (set! log-path arg)]))
+     (set! log-path arg)]
+    [("--skip-sequential") "Skip sequential variant"
+     (set! skip-sequential #t)]))
 
   (printf "Generating ~a graph (n=~a)...\n" graph-type n)
   (define g
@@ -190,16 +187,18 @@
                        (list 'seed seed)
                        (list 'graph-type graph-type)))
 
-  (printf "Running sequential BFS from vertex ~a...\n" source)
-  (define seq-result
-    (run-benchmark
-     (λ () (bfs-sequential g source))
-     #:name 'bfs
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential BFS from vertex ~a...\n" source)
+    (set! seq-result
+      (run-benchmark
+       (λ () (bfs-sequential g source))
+       #:name 'bfs
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel BFS (workers=~a)...\n" workers)
   (define par-result
@@ -212,20 +211,21 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (verify-bfs-parent result source)
+               (when (and seq-result (not (verify-bfs-parent result source)))
                  (error 'bfs "parallel result invalid at iteration ~a" iteration)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification:\n")
-  (printf "  Sequential parent valid: ~a\n" (verify-bfs-parent seq-result source))
-  (printf "  Parallel parent valid: ~a\n" (verify-bfs-parent par-result source))
-  (printf "  Results match: ~a\n" (equal? seq-result par-result))
+  (unless skip-sequential
+    (printf "\nVerification:\n")
+    (printf "  Sequential parent valid: ~a\n" (verify-bfs-parent seq-result source))
+    (printf "  Parallel parent valid: ~a\n" (verify-bfs-parent par-result source))
+    (printf "  Results match: ~a\n" (equal? seq-result par-result)))
 
-  (define reachable (for/sum ([p (in-vector seq-result)])
+  (define reachable (for/sum ([p (in-vector par-result)])
                       (if (= -1 p) 0 1)))
   (printf "\nReachable vertices: ~a / ~a\n" reachable n)
 
   (printf "\nSample BFS tree (first 10 vertices):\n")
   (for ([i (in-range (min 10 n))])
-    (printf "  parent[~a] = ~a\n" i (vector-ref seq-result i))))
+    (printf "  parent[~a] = ~a\n" i (vector-ref par-result i))))

@@ -9,8 +9,7 @@
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
-         "../common/run.rkt"
-         "../common/parallel.rkt")
+         "../common/run.rkt")
 
 (provide centrality-sequential
          centrality-parallel
@@ -79,6 +78,7 @@
   (define workers 1)
   (define repeat 1)
   (define log-path "")
+  (define skip-sequential #f)
 
   (command-line
    #:program "centrality"
@@ -96,7 +96,9 @@
    [("--repeat") arg "Number of repetitions (default: 1)"
     (set! repeat (string->number arg))]
    [("--log") arg "Log file path"
-    (set! log-path arg)])
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential variant"
+    (set! skip-sequential #t)])
 
   ;; Generate input graph
   (printf "Generating random graph with ~a vertices and ~a edges...\n" n num-edges)
@@ -110,16 +112,18 @@
                        (list 'seed seed)
                        (list 'workers workers)))
 
-  (printf "Running sequential centrality(n=~a, edges=~a, source=~a)...\n" n num-edges source)
-  (define seq-result
-    (run-benchmark
-     (λ () (centrality-sequential graph source))
-     #:name 'centrality
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential centrality(n=~a, edges=~a, source=~a)...\n" n num-edges source)
+    (set! seq-result
+      (run-benchmark
+       (λ () (centrality-sequential graph source))
+       #:name 'centrality
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel centrality(n=~a, edges=~a, source=~a) (workers=~a)...\n" n num-edges source workers)
   (define par-result
@@ -132,18 +136,19 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (equal? seq-result result)
+               (when (and seq-result (not (equal? seq-result result)))
                  (error 'centrality "parallel result mismatch at iteration ~a"
                         iteration)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (equal? seq-result par-result)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (equal? seq-result par-result)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
   (define max-dep (for/fold ([m 0.0])
-                            ([d (in-vector seq-result)])
+                            ([d (in-vector par-result)])
                     (max m d)))
   (printf "Max dependency: ~a\n" max-dep))

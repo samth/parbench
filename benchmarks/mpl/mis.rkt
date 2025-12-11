@@ -3,8 +3,7 @@
 (require racket/fixnum
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide mis-sequential
          mis-parallel
@@ -76,63 +75,61 @@
   (random-seed seed)
 
   ;; Iterate until all vertices are processed
-  (call-with-thread-pool workers
-    (λ (pool actual-workers)
-      (let loop ([round 0])
-        (when (> active-count 0)
-          ;; Assign random priorities to active vertices
-          (define priorities (make-vector n 0))
-          (for ([v (in-range n)]
-                #:when (vector-ref active v))
-            (vector-set! priorities v (random 1000000000)))
+  (let loop ([round 0])
+    (when (> active-count 0)
+      ;; Assign random priorities to active vertices
+      (define priorities (make-vector n 0))
+      (for ([v (in-range n)]
+            #:when (vector-ref active v))
+        (vector-set! priorities v (random 1000000000)))
 
-          ;; Find local maxima in parallel
-          (define chunk-size (quotient (+ n actual-workers -1) actual-workers))
-          (define local-maxima-threads
-            (for/list ([w (in-range actual-workers)])
-              (define start (* w chunk-size))
-              (define end (min (+ start chunk-size) n))
-              (and (< start end)
-                   (thread-pool-submit
-                    pool
-                    (λ ()
-                      (define local-max (make-vector n #f))
-                      (for ([v (in-range start end)]
-                            #:when (vector-ref active v))
-                        (define v-priority (vector-ref priorities v))
-                        (define is-max
-                          (for/and ([u (in-vector (vector-ref graph v))])
-                            (or (not (vector-ref active u))
-                                (> v-priority (vector-ref priorities u)))))
-                        (when is-max
-                          (vector-set! local-max v #t)))
-                      local-max)))))
+      ;; Find local maxima in parallel
+      (define chunk-size (quotient (+ n workers -1) workers))
+      (define channels
+        (for/list ([w (in-range workers)])
+          (define start (* w chunk-size))
+          (define end (min (+ start chunk-size) n))
+          (and (< start end)
+               (let ([ch (make-channel)])
+                 (thread
+                  (λ ()
+                    (define local-max (make-vector n #f))
+                    (for ([v (in-range start end)]
+                          #:when (vector-ref active v))
+                      (define v-priority (vector-ref priorities v))
+                      (define is-max
+                        (for/and ([u (in-vector (vector-ref graph v))])
+                          (or (not (vector-ref active u))
+                              (> v-priority (vector-ref priorities u)))))
+                      (when is-max
+                        (vector-set! local-max v #t)))
+                    (channel-put ch local-max)))
+                 ch))))
 
-          ;; Collect results
-          (define local-maxima (make-vector n #f))
-          (for ([task (in-list local-maxima-threads)])
-            (when task
-              (define partial (thread-pool-wait task))
-              (for ([v (in-range n)])
-                (when (vector-ref partial v)
-                  (vector-set! local-maxima v #t)))))
+      ;; Collect results
+      (define local-maxima (make-vector n #f))
+      (for ([ch (in-list channels)])
+        (when ch
+          (define partial (channel-get ch))
+          (for ([v (in-range n)])
+            (when (vector-ref partial v)
+              (vector-set! local-maxima v #t)))))
 
-          ;; Add local maxima to MIS and remove them and their neighbors
-          (define new-removed 0)
-          (for ([v (in-range n)]
-                #:when (vector-ref local-maxima v))
-            (vector-set! in-mis v #t)
-            (vector-set! active v #f)
-            (set! new-removed (add1 new-removed))
-            ;; Remove neighbors
-            (for ([u (in-vector (vector-ref graph v))])
-              (when (vector-ref active u)
-                (vector-set! active u #f)
-                (set! new-removed (add1 new-removed)))))
+      ;; Add local maxima to MIS and remove them and their neighbors
+      (define new-removed 0)
+      (for ([v (in-range n)]
+            #:when (vector-ref local-maxima v))
+        (vector-set! in-mis v #t)
+        (vector-set! active v #f)
+        (set! new-removed (add1 new-removed))
+        ;; Remove neighbors
+        (for ([u (in-vector (vector-ref graph v))])
+          (when (vector-ref active u)
+            (vector-set! active u #f)
+            (set! new-removed (add1 new-removed)))))
 
-          (set! active-count (- active-count new-removed))
-          (loop (add1 round)))))
-    #:max (if (zero? n) 1 n))
+      (set! active-count (- active-count new-removed))
+      (loop (add1 round))))
 
   ;; Return list of vertices in MIS
   (for/list ([v (in-range n)]
@@ -189,6 +186,7 @@
   (define repeat 3)
   (define log-path #f)
   (define seed 42)
+  (define skip-sequential #f)
 
   (void
    (command-line
@@ -207,7 +205,9 @@
     [("--seed") arg "Random seed"
      (set! seed (parse-positive-integer arg 'mis))]
     [("--log") arg "S-expression log path"
-     (set! log-path arg)]))
+     (set! log-path arg)]
+    [("--skip-sequential") "Skip sequential variant"
+     (set! skip-sequential #t)]))
 
   ;; Load or generate graph
   (define graph
@@ -232,16 +232,18 @@
                        (list 'workers workers)
                        (list 'seed seed)))
 
-  (printf "Running sequential MIS...\n")
-  (define seq-result
-    (run-benchmark
-     (λ () (mis-sequential graph))
-     #:name 'mis
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential MIS...\n")
+    (set! seq-result
+      (run-benchmark
+       (λ () (mis-sequential graph))
+       #:name 'mis
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel MIS (workers=~a)...\n" workers)
   (define par-result
@@ -254,17 +256,19 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (verify-mis graph result)
+               (when (and seq-result (not (verify-mis graph result)))
                  (error 'mis "parallel result verification failed at iteration ~a" iteration)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (and (verify-mis graph seq-result) (verify-mis graph par-result))
-      (printf "✓ Sequential and parallel results are valid MIS\n")
-      (printf "✗ Verification failed!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (and (verify-mis graph seq-result) (verify-mis graph par-result))
+        (printf "✓ Sequential and parallel results are valid MIS\n")
+        (printf "✗ Verification failed!\n")))
 
   (printf "\nMIS sizes:\n")
-  (printf "  Sequential: ~a vertices\n" (length seq-result))
+  (when seq-result
+    (printf "  Sequential: ~a vertices\n" (length seq-result)))
   (printf "  Parallel:   ~a vertices\n" (length par-result))
   (printf "\nNote: MIS sizes may differ between sequential and parallel due to different algorithms\n"))

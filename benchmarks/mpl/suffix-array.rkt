@@ -3,8 +3,7 @@
 (require racket/fixnum
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide suffix-array-sequential
          suffix-array-parallel
@@ -62,7 +61,7 @@
 
   sa)
 
-;; Parallel suffix array using prefix-doubling with thread-pool parallelism
+;; Parallel suffix array using prefix-doubling with thread parallelism
 (define (suffix-array-parallel text workers)
   (define n (string-length text))
   (define text-vec (list->vector (string->list text)))
@@ -75,86 +74,81 @@
   ;; Create suffix array (initially just positions)
   (define sa (for/vector ([i (in-range n)]) i))
 
-  (define (make-ranges len actual-workers)
+  (define (make-ranges len num-workers)
     (cond
-      [(or (zero? len) (zero? actual-workers)) '()]
+      [(or (zero? len) (zero? num-workers)) '()]
       [else
-       (define chunk (max 1 (ceiling (/ len actual-workers))))
+       (define chunk (max 1 (ceiling (/ len num-workers))))
        (for/list ([start (in-range 0 len chunk)])
          (cons start (min len (+ start chunk))))]))
 
-  (call-with-thread-pool workers
-    (λ (pool actual-workers)
-      (let loop ([k 1])
-        (when (< k n)
-          ;; compute secondary ranks (rank[i + k]) in parallel
-          (define secondary (make-vector n -1))
-          (define ranges (make-ranges n actual-workers))
-          (for ([t (in-list
-                    (for/list ([rg (in-list ranges)])
-                      (define start (car rg))
-                      (define end (cdr rg))
-                      (thread-pool-submit
-                       pool
-                       (λ ()
-                         (for ([i (in-range start end)])
-                           (vector-set! secondary i
-                                        (if (< (+ i k) n)
-                                            (vector-ref rank (+ i k))
-                                            -1)))))))])
-            (thread-pool-wait t))
+  (let loop ([k 1])
+    (when (< k n)
+      ;; compute secondary ranks (rank[i + k]) in parallel
+      (define secondary (make-vector n -1))
+      (define ranges (make-ranges n workers))
+      (define threads1
+        (for/list ([rg (in-list ranges)])
+          (define start (car rg))
+          (define end (cdr rg))
+          (thread
+           (λ ()
+             (for ([i (in-range start end)])
+               (vector-set! secondary i
+                            (if (< (+ i k) n)
+                                (vector-ref rank (+ i k))
+                                -1)))))))
+      (for-each thread-wait threads1)
 
-          ;; Sort suffixes using the computed key pairs
-          (define sa-list (vector->list sa))
-          (define sorted-sa
-            (sort sa-list
-                  (λ (i j)
-                    (define ri (vector-ref rank i))
-                    (define rj (vector-ref rank j))
-                    (if (= ri rj)
-                        (< (vector-ref secondary i)
-                           (vector-ref secondary j))
-                        (< ri rj)))))
-          (set! sa (list->vector sorted-sa))
+      ;; Sort suffixes using the computed key pairs
+      (define sa-list (vector->list sa))
+      (define sorted-sa
+        (sort sa-list
+              (λ (i j)
+                (define ri (vector-ref rank i))
+                (define rj (vector-ref rank j))
+                (if (= ri rj)
+                    (< (vector-ref secondary i)
+                       (vector-ref secondary j))
+                    (< ri rj)))))
+      (set! sa (list->vector sorted-sa))
 
-          ;; Determine rank boundaries in parallel
-          (define diff (make-vector n 0))
-          (define diff-length (if (> n 0) (sub1 n) 0))
-          (define diff-ranges (make-ranges diff-length actual-workers))
-          (for ([t (in-list
-                    (for/list ([rg (in-list diff-ranges)])
-                      (define start (car rg))
-                      (define end (cdr rg))
-                      (thread-pool-submit
-                       pool
-                       (λ ()
-                         (for ([offset (in-range start end)])
-                           (define idx (add1 offset))
-                           (define curr (vector-ref sa idx))
-                           (define prev (vector-ref sa (sub1 idx)))
-                           (define same-primary (= (vector-ref rank curr)
-                                                   (vector-ref rank prev)))
-                           (define same-secondary (= (vector-ref secondary curr)
-                                                     (vector-ref secondary prev)))
-                           (vector-set! diff idx (if (and same-primary same-secondary) 0 1)))))))])
-            (thread-pool-wait t))
+      ;; Determine rank boundaries in parallel
+      (define diff (make-vector n 0))
+      (define diff-length (if (> n 0) (sub1 n) 0))
+      (define diff-ranges (make-ranges diff-length workers))
+      (define threads2
+        (for/list ([rg (in-list diff-ranges)])
+          (define start (car rg))
+          (define end (cdr rg))
+          (thread
+           (λ ()
+             (for ([offset (in-range start end)])
+               (define idx (add1 offset))
+               (define curr (vector-ref sa idx))
+               (define prev (vector-ref sa (sub1 idx)))
+               (define same-primary (= (vector-ref rank curr)
+                                       (vector-ref rank prev)))
+               (define same-secondary (= (vector-ref secondary curr)
+                                         (vector-ref secondary prev)))
+               (vector-set! diff idx (if (and same-primary same-secondary) 0 1)))))))
+      (for-each thread-wait threads2)
 
-          ;; Prefix sum (sequential) to assign new ranks
-          (define new-rank (make-vector n 0))
-          (when (> n 0)
-            (vector-set! new-rank (vector-ref sa 0) 0))
-          (define current-rank 0)
-          (for ([idx (in-range 1 n)])
-            (when (= 1 (vector-ref diff idx))
-              (set! current-rank (add1 current-rank)))
-            (vector-set! new-rank (vector-ref sa idx) current-rank))
+      ;; Prefix sum (sequential) to assign new ranks
+      (define new-rank (make-vector n 0))
+      (when (> n 0)
+        (vector-set! new-rank (vector-ref sa 0) 0))
+      (define current-rank 0)
+      (for ([idx (in-range 1 n)])
+        (when (= 1 (vector-ref diff idx))
+          (set! current-rank (add1 current-rank)))
+        (vector-set! new-rank (vector-ref sa idx) current-rank))
 
-          (set! rank new-rank)
+      (set! rank new-rank)
 
-          ;; Early exit if ranks are unique
-          (unless (= current-rank (sub1 n))
-            (loop (* 2 k))))))
-    #:max (max 1 n))
+      ;; Early exit if ranks are unique
+      (unless (= current-rank (sub1 n))
+        (loop (* 2 k)))))
 
   sa)
 
@@ -204,6 +198,7 @@
   (define repeat 3)
   (define log-path #f)
   (define seed 42)
+  (define skip-sequential #f)
 
   (void
    (command-line
@@ -222,7 +217,9 @@
     [("--seed") arg "Random seed"
      (set! seed (parse-positive-integer arg 'suffix-array))]
     [("--log") arg "S-expression log path"
-     (set! log-path arg)]))
+     (set! log-path arg)]
+    [("--skip-sequential") "Skip sequential variant"
+     (set! skip-sequential #t)]))
 
   ;; Load or generate text
   (define text
@@ -243,16 +240,18 @@
                        (list 'workers workers)
                        (list 'seed seed)))
 
-  (printf "Running sequential suffix array (prefix doubling)...\n")
-  (define seq-result
-    (run-benchmark
-     (λ () (suffix-array-sequential text))
-     #:name 'suffix-array
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential suffix array (prefix doubling)...\n")
+    (set! seq-result
+      (run-benchmark
+       (λ () (suffix-array-sequential text))
+       #:name 'suffix-array
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel suffix array (workers=~a)...\n" workers)
   (define par-result
@@ -265,23 +264,24 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (equal? seq-result result)
+               (when (and seq-result (not (equal? seq-result result)))
                  (error 'suffix-array "parallel result mismatch at iteration ~a" iteration)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (equal? seq-result par-result)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (equal? seq-result par-result)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
   (printf "\nSuffix Array Statistics:\n")
   (printf "  Text length: ~a\n" text-length)
-  (printf "  Array length: ~a\n" (vector-length seq-result))
+  (printf "  Array length: ~a\n" (vector-length par-result))
 
   (printf "\nSample suffixes (first 5 positions):\n")
-  (for ([i (in-range (min 5 (vector-length seq-result)))])
-    (define pos (vector-ref seq-result i))
+  (for ([i (in-range (min 5 (vector-length par-result)))])
+    (define pos (vector-ref par-result i))
     (define suffix (substring text pos (min (+ pos 20) text-length)))
     (printf "  [~a] pos=~a: ~s~a\n" i pos suffix
             (if (> (- text-length pos) 20) "..." ""))))

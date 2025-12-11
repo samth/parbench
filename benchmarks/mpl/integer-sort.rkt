@@ -3,8 +3,7 @@
 (require racket/fixnum
          "../common/cli.rkt"
          "../common/run.rkt"
-         "../common/logging.rkt"
-         "../common/parallel.rkt")
+         "../common/logging.rkt")
 
 (provide integer-sort-sequential
          integer-sort-parallel)
@@ -37,34 +36,34 @@
 ;; Parallel counting sort: parallel counting and scattering
 (define (integer-sort-parallel data range workers)
   (define n (vector-length data))
-  (define global-counts
-    (call-with-thread-pool workers
-      (λ (pool actual-workers)
-        (define chunk-size (quotient (+ n actual-workers -1) actual-workers))
-        ;; Step 1: Parallel counting - each worker counts its partition
-        (define local-counts-list
-          (thread-pool-wait/collect
-           (for/list ([w (in-range actual-workers)])
-             (define start (* w chunk-size))
-             (define end (min (+ start chunk-size) n))
-             (thread-pool-submit
-              pool
-              (λ ()
-                (define local-counts (make-vector range 0))
-                (for ([i (in-range start end)])
-                  (define val (vector-ref data i))
-                  (vector-set! local-counts val
-                               (fx+ 1 (vector-ref local-counts val))))
-                local-counts)))))
-        ;; Step 2: Merge local counts
-        (define merged (make-vector range 0))
-        (for ([local-counts (in-list local-counts-list)])
-          (for ([bucket (in-range range)])
-            (vector-set! merged bucket
-                         (fx+ (vector-ref merged bucket)
-                              (vector-ref local-counts bucket)))))
-        merged)
-      #:max (if (zero? n) 1 n)))
+  (define chunk-size (quotient (+ n workers -1) workers))
+
+  ;; Step 1: Parallel counting - each worker counts its partition
+  (define channels
+    (for/list ([w (in-range workers)])
+      (define ch (make-channel))
+      (define start (* w chunk-size))
+      (define end (min (+ start chunk-size) n))
+      (thread
+       (λ ()
+         (define local-counts (make-vector range 0))
+         (for ([i (in-range start end)])
+           (define val (vector-ref data i))
+           (vector-set! local-counts val
+                        (fx+ 1 (vector-ref local-counts val))))
+         (channel-put ch local-counts)))
+      ch))
+
+  ;; Collect local counts
+  (define local-counts-list (map channel-get channels))
+
+  ;; Step 2: Merge local counts
+  (define global-counts (make-vector range 0))
+  (for ([local-counts (in-list local-counts-list)])
+    (for ([bucket (in-range range)])
+      (vector-set! global-counts bucket
+                   (fx+ (vector-ref global-counts bucket)
+                        (vector-ref local-counts bucket)))))
 
   ;; Step 3: Compute prefix sums
   (define positions (make-vector range 0))
@@ -111,6 +110,7 @@
   (define repeat 3)
   (define log-path #f)
   (define seed 42)
+  (define skip-sequential #f)
 
   (void
    (command-line
@@ -127,7 +127,9 @@
     [("--seed") arg "Random seed"
      (set! seed (parse-positive-integer arg 'integer-sort))]
     [("--log") arg "S-expression log path"
-     (set! log-path arg)]))
+     (set! log-path arg)]
+    [("--skip-sequential") "Skip sequential variant"
+     (set! skip-sequential #t)]))
 
   (printf "Generating random data (n=~a, range=[0,~a))...\n" n range)
   (define data (generate-random-data n range seed))
@@ -139,16 +141,18 @@
                        (list 'workers workers)
                        (list 'seed seed)))
 
-  (printf "Running sequential integer sort...\n")
-  (define seq-result
-    (run-benchmark
-     (λ () (integer-sort-sequential data range))
-     #:name 'integer-sort
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential integer sort...\n")
+    (set! seq-result
+      (run-benchmark
+       (λ () (integer-sort-sequential data range))
+       #:name 'integer-sort
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel integer sort (workers=~a)...\n" workers)
   (define par-result
@@ -161,17 +165,19 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (and (verify-sorted result)
-                           (verify-same-elements data result))
+               (when (and seq-result
+                         (not (and (verify-sorted result)
+                                  (verify-same-elements data result))))
                  (error 'integer-sort "parallel result invalid at iteration ~a" iteration)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification:\n")
-  (printf "  Sequential sorted: ~a\n" (verify-sorted seq-result))
-  (printf "  Parallel sorted: ~a\n" (verify-sorted par-result))
-  (printf "  Same elements: ~a\n" (verify-same-elements seq-result par-result))
+  (unless skip-sequential
+    (printf "\nVerification:\n")
+    (printf "  Sequential sorted: ~a\n" (verify-sorted seq-result))
+    (printf "  Parallel sorted: ~a\n" (verify-sorted par-result))
+    (printf "  Same elements: ~a\n" (verify-same-elements seq-result par-result)))
 
   (printf "\nSample values (first 10):\n")
   (for ([i (in-range (min 10 n))])
-    (printf "  result[~a] = ~a\n" i (vector-ref seq-result i))))
+    (printf "  result[~a] = ~a\n" i (vector-ref par-result i))))

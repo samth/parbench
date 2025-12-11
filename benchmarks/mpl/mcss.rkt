@@ -10,8 +10,7 @@
 
 (require "../common/cli.rkt"
          "../common/logging.rkt"
-         "../common/run.rkt"
-         "../common/parallel.rkt")
+         "../common/run.rkt")
 
 (provide mcss-sequential
          mcss-parallel
@@ -54,6 +53,7 @@
   (define workers 1)
   (define repeat 1)
   (define log-path "")
+  (define skip-sequential #f)
 
 
   (command-line
@@ -68,7 +68,9 @@
    [("--repeat") arg "Number of repetitions (default: 1)"
     (set! repeat (string->number arg))]
    [("--log") arg "Log file path"
-    (set! log-path arg)])
+    (set! log-path arg)]
+   [("--skip-sequential") "Skip sequential variant"
+    (set! skip-sequential #t)])
 
   ;; Generate input data
   (define data (generate-random-data n seed))
@@ -79,16 +81,18 @@
                        (list 'seed seed)
                        (list 'workers workers)))
 
-  (printf "Running sequential mcss(n=~a)...\n" n)
-  (define seq-result
-    (run-benchmark
-     (λ () (mcss-sequential data))
-     #:name 'mcss
-     #:variant 'sequential
-     #:repeat repeat
-     #:log-writer writer
-     #:params params
-     #:metadata metadata))
+  (define seq-result #f)
+  (unless skip-sequential
+    (printf "Running sequential mcss(n=~a)...\n" n)
+    (set! seq-result
+      (run-benchmark
+       (λ () (mcss-sequential data))
+       #:name 'mcss
+       #:variant 'sequential
+       #:repeat repeat
+       #:log-writer writer
+       #:params params
+       #:metadata metadata)))
 
   (printf "Running parallel mcss(n=~a) (workers=~a)...\n" n workers)
   (define par-result
@@ -101,15 +105,16 @@
      #:params params
      #:metadata metadata
      #:check (λ (iteration result)
-               (unless (< (abs (- seq-result result)) 0.001)
+               (when (and seq-result (not (< (abs (- seq-result result)) 0.001)))
                  (error 'mcss "parallel result mismatch at iteration ~a: expected ~a, got ~a"
                         iteration seq-result result)))))
 
   (close-log-writer writer)
 
-  (printf "\nVerification: ")
-  (if (< (abs (- seq-result par-result)) 0.001)
-      (printf "✓ Sequential and parallel results match\n")
-      (printf "✗ Results differ!\n"))
+  (unless skip-sequential
+    (printf "\nVerification: ")
+    (if (< (abs (- seq-result par-result)) 0.001)
+        (printf "✓ Sequential and parallel results match\n")
+        (printf "✗ Results differ!\n")))
 
-  (printf "mcss = ~a\n" seq-result))
+  (printf "mcss = ~a\n" par-result))
