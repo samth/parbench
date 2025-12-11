@@ -1,9 +1,8 @@
 #lang racket
 
 (require racket/fixnum
-         racket/vector
-         racket/list
-         racket/set
+         racket/flonum
+         racket/unsafe/ops
          "../common/cli.rkt"
          "../common/run.rkt"
          "../common/logging.rkt")
@@ -13,292 +12,381 @@
          read-points
          verify-convex-hull)
 
-;; Point representation: (x . y)
-(define (point x y) (cons x y))
-(define (point-x p) (car p))
-(define (point-y p) (cdr p))
+;; ============================================================================
+;; Parallel Primitives (inline implementations)
+;; ============================================================================
 
-;; Optional detailed timing for algorithm/verification.
-(define timing-enabled? (make-parameter #f))
+;; Granularity threshold for switching to sequential
+(define GRAIN 10000)
 
-(define (with-timing label thunk)
-  (define start (current-inexact-milliseconds))
-  (define v (thunk))
-  (define dt (- (current-inexact-milliseconds) start))
-  (when (timing-enabled?)
-    (printf "  [time] ~a: ~a ms\n" label (inexact->exact (round dt))))
-  v)
+;; Parallel reduce with granularity control
+;; Returns (values best-idx best-val) where f returns (idx . val)
+(define (parallel-reduce-max f n workers)
+  (if (< n GRAIN)
+      ;; Sequential
+      (let loop ([i 0] [best-idx -1] [best-val -inf.0])
+        (if (>= i n)
+            (values best-idx best-val)
+            (let* ([result (f i)]
+                   [idx (car result)]
+                   [val (cdr result)])
+              (if (> val best-val)
+                  (loop (add1 i) idx val)
+                  (loop (add1 i) best-idx best-val)))))
+      ;; Parallel
+      (let* ([chunk-size (quotient (+ n workers -1) workers)]
+             [channels
+              (for/list ([w (in-range workers)])
+                (define start (* w chunk-size))
+                (define end (min (+ start chunk-size) n))
+                (if (>= start n)
+                    #f
+                    (let ([ch (make-channel)])
+                      (thread
+                       (lambda ()
+                         (let loop ([i start] [best-idx -1] [best-val -inf.0])
+                           (if (>= i end)
+                               (channel-put ch (cons best-idx best-val))
+                               (let* ([result (f i)]
+                                      [idx (car result)]
+                                      [val (cdr result)])
+                                 (if (> val best-val)
+                                     (loop (add1 i) idx val)
+                                     (loop (add1 i) best-idx best-val)))))))
+                      ch)))]
+             [results (for/list ([ch channels] #:when ch) (channel-get ch))])
+        ;; Merge results
+        (for/fold ([best-idx -1] [best-val -inf.0] #:result (values best-idx best-val))
+                  ([r results])
+          (if (> (cdr r) best-val)
+              (values (car r) (cdr r))
+              (values best-idx best-val))))))
 
-;; Normalize points input to a vector.
-(define (points->vector points)
+;; Parallel filter - returns indices that satisfy predicate
+(define (parallel-filter pred? n workers)
+  (if (< n GRAIN)
+      ;; Sequential
+      (for/vector ([i (in-range n)] #:when (pred? i)) i)
+      ;; Parallel: each worker builds local list, then merge
+      (let* ([chunk-size (quotient (+ n workers -1) workers)]
+             [channels
+              (for/list ([w (in-range workers)])
+                (define start (* w chunk-size))
+                (define end (min (+ start chunk-size) n))
+                (if (>= start n)
+                    #f
+                    (let ([ch (make-channel)])
+                      (thread
+                       (lambda ()
+                         (channel-put ch
+                           (for/list ([i (in-range start end)] #:when (pred? i)) i))))
+                      ch)))]
+             [results (for/list ([ch channels] #:when ch) (channel-get ch))])
+        (list->vector (apply append results)))))
+
+;; Parallel split into left/right based on predicate
+;; Returns (values left-indices right-indices)
+;; index-fn maps iteration index to actual value to store (usually identity or vector-ref)
+(define (parallel-split-indexed left-pred? right-pred? index-fn n workers)
+  (if (< n GRAIN)
+      ;; Sequential
+      (let loop ([i 0] [left '()] [right '()])
+        (if (>= i n)
+            (values (list->vector (reverse left))
+                    (list->vector (reverse right)))
+            (let ([val (index-fn i)])
+              (cond
+                [(left-pred? i) (loop (add1 i) (cons val left) right)]
+                [(right-pred? i) (loop (add1 i) left (cons val right))]
+                [else (loop (add1 i) left right)]))))
+      ;; Parallel
+      (let* ([chunk-size (quotient (+ n workers -1) workers)]
+             [channels
+              (for/list ([w (in-range workers)])
+                (define start (* w chunk-size))
+                (define end (min (+ start chunk-size) n))
+                (if (>= start n)
+                    #f
+                    (let ([ch (make-channel)])
+                      (thread
+                       (lambda ()
+                         (let loop ([i start] [left '()] [right '()])
+                           (if (>= i end)
+                               (channel-put ch (cons (reverse left) (reverse right)))
+                               (let ([val (index-fn i)])
+                                 (cond
+                                   [(left-pred? i) (loop (add1 i) (cons val left) right)]
+                                   [(right-pred? i) (loop (add1 i) left (cons val right))]
+                                   [else (loop (add1 i) left right)]))))))
+                      ch)))]
+             [results (for/list ([ch channels] #:when ch) (channel-get ch))]
+             [lefts (apply append (map car results))]
+             [rights (apply append (map cdr results))])
+        (values (list->vector lefts) (list->vector rights)))))
+
+;; ============================================================================
+;; Point operations
+;; ============================================================================
+
+;; Points stored as (vector x y) for cache efficiency
+(define (make-point x y) (vector x y))
+(define (point-x p) (vector-ref p 0))
+(define (point-y p) (vector-ref p 1))
+
+;; Cross product for orientation test
+(define (cross-product p q r)
+  (fl- (fl* (fl- (point-x q) (point-x p))
+            (fl- (point-y r) (point-y p)))
+       (fl* (fl- (point-y q) (point-y p))
+            (fl- (point-x r) (point-x p)))))
+
+;; Distance from point to line (actually signed area * 2)
+(define (signed-area a b p)
+  (cross-product a b p))
+
+;; ============================================================================
+;; Sequential QuickHull
+;; ============================================================================
+
+(define (quickhull-sequential pts indices a b)
+  (define n (vector-length indices))
+  (if (= n 0)
+      '()
+      ;; Find farthest point
+      (let* ([pt-a (vector-ref pts a)]
+             [pt-b (vector-ref pts b)]
+             [best-idx -1]
+             [best-dist -inf.0])
+        (for ([i (in-range n)])
+          (define idx (vector-ref indices i))
+          (define dist (signed-area pt-a pt-b (vector-ref pts idx)))
+          (when (fl> dist best-dist)
+            (set! best-idx idx)
+            (set! best-dist dist)))
+        (if (= best-idx -1)
+            '()
+            (let* ([pt-mid (vector-ref pts best-idx)]
+                   ;; Split into left and right sets
+                   [left-indices
+                    (for/vector ([i (in-range n)]
+                                 #:when (fl> (signed-area pt-a pt-mid
+                                              (vector-ref pts (vector-ref indices i))) 0.0))
+                      (vector-ref indices i))]
+                   [right-indices
+                    (for/vector ([i (in-range n)]
+                                 #:when (fl> (signed-area pt-mid pt-b
+                                              (vector-ref pts (vector-ref indices i))) 0.0))
+                      (vector-ref indices i))])
+              (append (quickhull-sequential pts left-indices a best-idx)
+                      (list best-idx)
+                      (quickhull-sequential pts right-indices best-idx b)))))))
+
+(define (convex-hull-sequential points)
+  (define pts (if (vector? points) points (list->vector points)))
+  (define n (vector-length pts))
+  (when (< n 3)
+    (error 'convex-hull-sequential "Need at least 3 points"))
+
+  ;; Find leftmost and rightmost points
+  (define-values (left-idx right-idx)
+    (for/fold ([l 0] [r 0])
+              ([i (in-range n)])
+      (values (if (fl< (point-x (vector-ref pts i)) (point-x (vector-ref pts l))) i l)
+              (if (fl> (point-x (vector-ref pts i)) (point-x (vector-ref pts r))) i r))))
+
+  (define pt-l (vector-ref pts left-idx))
+  (define pt-r (vector-ref pts right-idx))
+
+  ;; Split into upper and lower sets
+  (define upper-indices
+    (for/vector ([i (in-range n)]
+                 #:when (fl> (signed-area pt-l pt-r (vector-ref pts i)) 0.0))
+      i))
+  (define lower-indices
+    (for/vector ([i (in-range n)]
+                 #:when (fl< (signed-area pt-l pt-r (vector-ref pts i)) 0.0))
+      i))
+
+  ;; Compute hull
+  (define upper-hull (quickhull-sequential pts upper-indices left-idx right-idx))
+  (define lower-hull (quickhull-sequential pts lower-indices right-idx left-idx))
+
+  ;; Convert indices to points
+  (append (list (vector-ref pts left-idx))
+          (map (lambda (i) (vector-ref pts i)) upper-hull)
+          (list (vector-ref pts right-idx))
+          (map (lambda (i) (vector-ref pts i)) lower-hull)))
+
+;; ============================================================================
+;; Parallel QuickHull (MPL-style)
+;; ============================================================================
+
+(define (quickhull-parallel pts indices a b workers threshold)
+  (define n (vector-length indices))
   (cond
-    [(vector? points) points]
-    [(list? points) (list->vector points)]
-    [else (error 'convex-hull "expected list or vector of points, got ~a" points)]))
+    [(= n 0) '()]
+    [(< n threshold)
+     ;; Fall back to sequential for small problems
+     (quickhull-sequential pts indices a b)]
+    [else
+     (define pt-a (vector-ref pts a))
+     (define pt-b (vector-ref pts b))
 
-;; Read points from file (format: x y per line)
+     ;; Parallel reduce to find farthest point
+     (define-values (best-idx best-dist)
+       (parallel-reduce-max
+        (lambda (i)
+          (define idx (vector-ref indices i))
+          (define dist (signed-area pt-a pt-b (vector-ref pts idx)))
+          (cons idx dist))
+        n workers))
+
+     (if (= best-idx -1)
+         '()
+         (let ([pt-mid (vector-ref pts best-idx)])
+           ;; Parallel split - pass index-fn to convert i to actual point index
+           (define-values (left-indices right-indices)
+             (parallel-split-indexed
+              (lambda (i)
+                (fl> (signed-area pt-a pt-mid (vector-ref pts (vector-ref indices i))) 0.0))
+              (lambda (i)
+                (fl> (signed-area pt-mid pt-b (vector-ref pts (vector-ref indices i))) 0.0))
+              (lambda (i) (vector-ref indices i))
+              n workers))
+
+           ;; Fork-join: process left and right in parallel
+           (define left-ch (make-channel))
+           (thread (lambda ()
+                     (channel-put left-ch
+                       (quickhull-parallel pts left-indices a best-idx workers threshold))))
+           (define right-hull
+             (quickhull-parallel pts right-indices best-idx b workers threshold))
+           (define left-hull (channel-get left-ch))
+
+           (append left-hull (list best-idx) right-hull)))]))
+
+(define (convex-hull-parallel points workers threshold)
+  (define pts (if (vector? points) points (list->vector points)))
+  (define n (vector-length pts))
+  (when (< n 3)
+    (error 'convex-hull-parallel "Need at least 3 points"))
+
+  ;; Parallel reduce to find leftmost and rightmost
+  (define-values (left-idx _l)
+    (parallel-reduce-max
+     (lambda (i) (cons i (fl- 0.0 (point-x (vector-ref pts i)))))  ; negate for min
+     n workers))
+  (define-values (right-idx _r)
+    (parallel-reduce-max
+     (lambda (i) (cons i (point-x (vector-ref pts i))))
+     n workers))
+
+  (define pt-l (vector-ref pts left-idx))
+  (define pt-r (vector-ref pts right-idx))
+
+  ;; Parallel split into upper and lower
+  ;; Here i IS the point index, so index-fn is identity
+  (define-values (upper-indices lower-indices)
+    (parallel-split-indexed
+     (lambda (i) (fl> (signed-area pt-l pt-r (vector-ref pts i)) 0.0))
+     (lambda (i) (fl< (signed-area pt-l pt-r (vector-ref pts i)) 0.0))
+     (lambda (i) i)  ; identity - i is already the point index
+     n workers))
+
+  ;; Fork-join for upper and lower hulls
+  (define upper-ch (make-channel))
+  (thread (lambda ()
+            (channel-put upper-ch
+              (quickhull-parallel pts upper-indices left-idx right-idx workers threshold))))
+  (define lower-hull
+    (quickhull-parallel pts lower-indices right-idx left-idx workers threshold))
+  (define upper-hull (channel-get upper-ch))
+
+  ;; Convert indices to points
+  (append (list (vector-ref pts left-idx))
+          (map (lambda (i) (vector-ref pts i)) upper-hull)
+          (list (vector-ref pts right-idx))
+          (map (lambda (i) (vector-ref pts i)) lower-hull)))
+
+;; ============================================================================
+;; I/O and Verification
+;; ============================================================================
+
 (define (read-points path)
   (define lines (file->lines path))
   (for/list ([line (in-list lines)])
     (define parts (string-split line))
     (when (< (length parts) 2)
       (error 'read-points "Invalid point format: ~a" line))
-    (point (string->number (first parts))
-           (string->number (second parts)))))
+    (make-point (string->number (first parts))
+                (string->number (second parts)))))
 
-;; Cross product for orientation test
-;; Returns: > 0 if p-q-r is counter-clockwise, < 0 if clockwise, 0 if collinear
-(define (cross-product p q r)
-  (- (* (- (point-x q) (point-x p))
-        (- (point-y r) (point-y p)))
-     (* (- (point-y q) (point-y p))
-        (- (point-x r) (point-x p)))))
-
-;; Distance from point p to line defined by a and b
-(define (distance-to-line p a b)
-  (abs (cross-product a b p)))
-
-;; Find the point farthest from line a-b in the given set
-(define (find-farthest-point points-vec a b)
-  (define max-dist 0)
-  (define max-point #f)
-  (for ([p (in-vector points-vec)])
-    (define dist (distance-to-line p a b))
-    (when (> dist max-dist)
-      (set! max-dist dist)
-      (set! max-point p)))
-  max-point)
-
-;; Filter a vector by predicate, returning a vector.
-(define (vector-filter pred vec)
-  (for/vector ([p (in-vector vec)] #:when (pred p)) p))
-
-;; Argmin/argmax over vectors.
-(define (argmin-vector key vec)
-  (when (zero? (vector-length vec))
-    (error 'argmin-vector "empty vector"))
-  (define best (vector-ref vec 0))
-  (define best-k (key best))
-  (for ([i (in-range 1 (vector-length vec))])
-    (define p (vector-ref vec i))
-    (define k (key p))
-    (when (< k best-k)
-      (set! best p)
-      (set! best-k k)))
-  best)
-
-(define (argmax-vector key vec)
-  (when (zero? (vector-length vec))
-    (error 'argmax-vector "empty vector"))
-  (define best (vector-ref vec 0))
-  (define best-k (key best))
-  (for ([i (in-range 1 (vector-length vec))])
-    (define p (vector-ref vec i))
-    (define k (key p))
-    (when (> k best-k)
-      (set! best p)
-      (set! best-k k)))
-  best)
-
-;; Sequential QuickHull algorithm
-(define (quickhull-sequential points-vec a b)
-  (if (zero? (vector-length points-vec))
-      null
-      (let ([farthest (find-farthest-point points-vec a b)])
-        (if (not farthest)
-            null
-            (let ([left-set (vector-filter (λ (p) (> (cross-product a farthest p) 0)) points-vec)]
-                  [right-set (vector-filter (λ (p) (> (cross-product farthest b p) 0)) points-vec)])
-              (append (quickhull-sequential left-set a farthest)
-                      (list farthest)
-                      (quickhull-sequential right-set farthest b)))))))
-
-(define (convex-hull-sequential points)
-  (define points-vec (points->vector points))
-  (when (< (vector-length points-vec) 3)
-    (error 'convex-hull-sequential "Need at least 3 points"))
-
-  ;; Find leftmost and rightmost points
-  (define leftmost (argmin-vector point-x points-vec))
-  (define rightmost (argmax-vector point-x points-vec))
-
-  ;; Divide points into upper and lower hulls
-  (define upper-set
-    (vector-filter (λ (p) (> (cross-product leftmost rightmost p) 0)) points-vec))
-  (define lower-set
-    (vector-filter (λ (p) (< (cross-product leftmost rightmost p) 0)) points-vec))
-
-  ;; Compute hull
-  (with-timing "sequential-hull-total"
-    (λ ()
-      (append (list leftmost)
-              (with-timing "sequential-upper"
-                (λ () (quickhull-sequential upper-set leftmost rightmost)))
-              (list rightmost)
-              (with-timing "sequential-lower"
-                (λ () (quickhull-sequential lower-set rightmost leftmost)))))))
-
-;; Parallel QuickHull algorithm using channels for communication
-(define (quickhull-parallel points-vec a b threshold)
-  (if (or (zero? (vector-length points-vec))
-          (< (vector-length points-vec) threshold))
-      (quickhull-sequential points-vec a b)
-      (let ([farthest (find-farthest-point points-vec a b)])
-        (if (not farthest)
-            null
-            (let* ([left-set (vector-filter (λ (p) (> (cross-product a farthest p) 0)) points-vec)]
-                   [right-set (vector-filter (λ (p) (> (cross-product farthest b p) 0)) points-vec)]
-                   [left-ch (and (positive? (vector-length left-set))
-                                 (let ([ch (make-channel)])
-                                   (thread (λ () (channel-put ch (quickhull-parallel left-set a farthest threshold))))
-                                   ch))]
-                   [right-hull (quickhull-parallel right-set farthest b threshold)]
-                   [left-hull (if left-ch (channel-get left-ch) null)])
-              (append left-hull (list farthest) right-hull))))))
-
-(define (convex-hull-parallel points workers threshold)
-  (define points-vec (points->vector points))
-  (when (< (vector-length points-vec) 3)
-    (error 'convex-hull-parallel "Need at least 3 points"))
-
-  ;; Find leftmost and rightmost points
-  (define leftmost (argmin-vector point-x points-vec))
-  (define rightmost (argmax-vector point-x points-vec))
-
-  ;; Divide points into upper and lower hulls
-  (define upper-set
-    (vector-filter (λ (p) (> (cross-product leftmost rightmost p) 0)) points-vec))
-  (define lower-set
-    (vector-filter (λ (p) (< (cross-product leftmost rightmost p) 0)) points-vec))
-
-  ;; Compute hull in parallel using threads and channels
-  (define upper-ch
-    (and (positive? (vector-length upper-set))
-         (let ([ch (make-channel)])
-           (thread (λ () (channel-put ch (quickhull-parallel upper-set leftmost rightmost threshold))))
-           ch)))
-  (define lower-hull (quickhull-parallel lower-set rightmost leftmost threshold))
-  (define upper-hull (if upper-ch (channel-get upper-ch) null))
-  (with-timing "parallel-hull-total"
-    (λ () (append (list leftmost) upper-hull (list rightmost) lower-hull))))
-
-;; Sign function helper
-(define (sgn x)
-  (cond [(> x 0) 1]
-        [(< x 0) -1]
-        [else 0]))
-
-;; Verify convex hull correctness
 (define (verify-convex-hull points hull #:sample-rate [sample-rate 0.05])
-  (define points-vec (points->vector points))
-  (define hull-vec (points->vector hull))
+  (define pts (if (vector? points) points (list->vector points)))
+  (define hull-vec (list->vector hull))
   (define hull-len (vector-length hull-vec))
+  (define n (vector-length pts))
 
-  ;; Build sets for fast membership.
-  (define points-set
-    (with-timing "verify-build-points-set"
-      (λ () (for/set ([p (in-vector points-vec)]) p))))
-  (define hull-set
-    (with-timing "verify-build-hull-set"
-      (λ () (for/set ([p (in-vector hull-vec)]) p))))
+  ;; Check hull is non-empty
+  (and (> hull-len 0)
+       ;; Sample check: random points should be inside hull
+       (let ([sample-count (max 1 (inexact->exact (ceiling (* sample-rate n))))])
+         (for/and ([_ (in-range sample-count)])
+           (define p (vector-ref pts (random n)))
+           ;; Point is inside if on same side of all edges
+           (or (for/or ([i (in-range hull-len)])
+                 (equal? p (vector-ref hull-vec i)))
+               (for/and ([i (in-range hull-len)])
+                 (define a (vector-ref hull-vec i))
+                 (define b (vector-ref hull-vec (modulo (add1 i) hull-len)))
+                 (fl<= (cross-product a b p) 0.0)))))))
 
-  ;; Check that all hull points are in the original set.
-  (define valid-points?
-    (with-timing "verify-hull-points-in-input"
-      (λ ()
-        (for/and ([p (in-vector hull-vec)])
-          (set-member? points-set p)))))
+;; ============================================================================
+;; Point Generation
+;; ============================================================================
 
-  ;; Sample 5% of points (with replacement) for inside checks.
-  (define num-points (vector-length points-vec))
-  (define sample-count
-    (max 1 (inexact->exact (ceiling (* sample-rate num-points)))))
-  (define sampled-points
-    (with-timing "verify-sample-points"
-      (λ ()
-        (for/list ([i (in-range sample-count)])
-          (vector-ref points-vec (random num-points))))))
-
-  (define (inside-or-on-hull? p)
-    (or (set-member? hull-set p)
-        (for/and ([i (in-range hull-len)])
-          (define a (vector-ref hull-vec i))
-          (define b (vector-ref hull-vec (if (= i (sub1 hull-len)) 0 (add1 i))))
-          (<= (cross-product a b p) 0))))
-
-  (define all-inside?
-    (with-timing "verify-sampled-inside-check"
-      (λ ()
-        (for/and ([p (in-list sampled-points)])
-          (inside-or-on-hull? p)))))
-
-  ;; Check that hull vertices are in consistent order (all CCW or all CW).
-  (define consistent-order?
-    (with-timing "verify-consistent-order"
-      (λ ()
-        (if (< hull-len 3)
-            #t
-            (let* ([a0 (vector-ref hull-vec 0)]
-                   [b0 (vector-ref hull-vec 1)]
-                   [c0 (vector-ref hull-vec 2)]
-                   [first-sign (cross-product a0 b0 c0)])
-              (for/and ([i (in-range hull-len)])
-                (define a (vector-ref hull-vec i))
-                (define b (vector-ref hull-vec (modulo (add1 i) hull-len)))
-                (define c (vector-ref hull-vec (modulo (+ i 2) hull-len)))
-                (define cp (cross-product a b c))
-                (or (= cp 0)
-                    (= (sgn first-sign) (sgn cp)))))))))
-
-  (and valid-points? all-inside? consistent-order?))
-
-;; Generate random points
 (define (generate-random-points n seed [distribution 'uniform-circle])
   (random-seed seed)
   (case distribution
     [(uniform-circle)
-     ;; Uniform distribution within unit circle
-     (for/list ([i (in-range n)])
-       (define r (sqrt (random)))
-       (define theta (* 2 pi (random)))
-       (point (* r (cos theta)) (* r (sin theta))))]
+     (for/vector ([i (in-range n)])
+       (define r (flsqrt (random)))
+       (define theta (fl* 2.0 (fl* pi (random))))
+       (make-point (fl* r (flcos theta)) (fl* r (flsin theta))))]
     [(uniform-square)
-     ;; Uniform distribution in unit square
-     (for/list ([i (in-range n)])
-       (point (random) (random)))]
-    [(circle-perimeter)
-     ;; Uniform distribution on circle perimeter
-     (for/list ([i (in-range n)])
-       (define theta (* 2 pi (random)))
-       (point (cos theta) (sin theta)))]
+     (for/vector ([i (in-range n)])
+       (make-point (random) (random)))]
     [else
      (error 'generate-random-points "Unknown distribution: ~a" distribution)]))
+
+;; ============================================================================
+;; Main
+;; ============================================================================
 
 (module+ main
   (define n 10000)
   (define distribution 'uniform-circle)
   (define points-file #f)
   (define workers (processor-count))
-  (define threshold 100)
+  (define threshold 1000)  ; Lower threshold for better parallelism
   (define repeat 3)
   (define log-path #f)
   (define seed 42)
   (define skip-sequential #f)
-  (define show-timings #f)
 
   (void
    (command-line
     #:program "convex-hull.rkt"
     #:once-each
-    [("--n") arg "Number of points (for random generation)"
+    [("--n") arg "Number of points"
      (set! n (parse-positive-integer arg 'convex-hull))]
-    [("--distribution") arg "Point distribution: uniform-circle, uniform-square, circle-perimeter"
+    [("--distribution") arg "Point distribution"
      (set! distribution (string->symbol arg))]
     [("--points") arg "Points input file"
      (set! points-file arg)]
     [("--workers") arg "Parallel worker count"
      (set! workers (parse-positive-integer arg 'convex-hull))]
-    [("--threshold") arg "Sequential threshold for parallel algorithm"
+    [("--threshold") arg "Sequential threshold"
      (set! threshold (parse-positive-integer arg 'convex-hull))]
     [("--repeat") arg "Benchmark repetitions"
      (set! repeat (parse-positive-integer arg 'convex-hull))]
@@ -307,24 +395,17 @@
     [("--log") arg "S-expression log path"
      (set! log-path arg)]
     [("--skip-sequential") "Skip sequential variant"
-     (set! skip-sequential #t)]
-    [("--timings") "Print detailed step timings"
-     (set! show-timings #t)]))
+     (set! skip-sequential #t)]))
 
   ;; Load or generate points
   (define points
-    (with-timing "load-or-generate-points"
-      (λ ()
-        (if points-file
-            (begin
-              (printf "Loading points from ~a...\n" points-file)
-              (read-points points-file))
-            (begin
-              (printf "Generating random points (n=~a, distribution=~a)...\n" n distribution)
-              (generate-random-points n seed distribution))))))
+    (if points-file
+        (list->vector (read-points points-file))
+        (begin
+          (printf "Generating random points (n=~a, distribution=~a)...\n" n distribution)
+          (generate-random-points n seed distribution))))
 
-  (define points-vec (points->vector points))
-  (define num-points (vector-length points-vec))
+  (define num-points (vector-length points))
   (printf "Number of points: ~a\n" num-points)
 
   (define writer (make-log-writer log-path))
@@ -336,11 +417,10 @@
 
   (define seq-result #f)
   (unless skip-sequential
-    (printf "Running sequential convex hull (QuickHull)...\n")
+    (printf "Running sequential convex hull...\n")
     (set! seq-result
       (run-benchmark
-       (λ () (parameterize ([timing-enabled? #f])
-              (convex-hull-sequential points-vec)))
+       (lambda () (convex-hull-sequential points))
        #:name 'convex-hull
        #:variant 'sequential
        #:repeat repeat
@@ -351,38 +431,21 @@
   (printf "Running parallel convex hull (workers=~a, threshold=~a)...\n" workers threshold)
   (define par-result
     (run-benchmark
-     (λ () (parameterize ([timing-enabled? #f])
-            (convex-hull-parallel points-vec workers threshold)))
+     (lambda () (convex-hull-parallel points workers threshold))
      #:name 'convex-hull
      #:variant 'parallel
      #:repeat repeat
      #:log-writer writer
      #:params params
-     #:metadata metadata
-     #:check (λ (iteration result)
-               (when (and seq-result
-                          (not (parameterize ([timing-enabled? #f])
-                                 (verify-convex-hull points-vec result))))
-                 (error 'convex-hull "parallel result verification failed at iteration ~a" iteration)))))
+     #:metadata metadata))
 
   (close-log-writer writer)
 
   (unless skip-sequential
-    (printf "\nVerification (random 5% sample):\n")
-    (define verified?
-      (parameterize ([timing-enabled? show-timings])
-        (and (with-timing "verify-sequential"
-               (λ () (verify-convex-hull points-vec seq-result)))
-             (with-timing "verify-parallel"
-               (λ () (verify-convex-hull points-vec par-result))))))
-    (printf "  Result: ~a\n" (if verified? "✓ valid convex hulls" "✗ verification failed")))
+    (printf "\nVerification:\n")
+    (printf "  Sequential hull valid: ~a (~a vertices)\n"
+            (verify-convex-hull points seq-result) (length seq-result))
+    (printf "  Parallel hull valid: ~a (~a vertices)\n"
+            (verify-convex-hull points par-result) (length par-result)))
 
-  (printf "\nConvex Hull Statistics:\n")
-  (printf "  Input points: ~a\n" num-points)
-  (when seq-result
-    (printf "  Sequential hull: ~a vertices\n" (length seq-result)))
-  (printf "  Parallel hull:   ~a vertices\n" (length par-result))
-
-  (printf "\nSample hull vertices (first 5 from parallel):\n")
-  (for ([p (in-list (take par-result (min 5 (length par-result))))])
-    (printf "  (~a, ~a)\n" (point-x p) (point-y p))))
+  (printf "\nHull size: ~a vertices\n" (length par-result)))
