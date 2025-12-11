@@ -33,19 +33,33 @@
   ;; Find max vertex id
   (define n (add1 (apply max (map (λ (e) (max (first e) (second e))) edge-triples))))
 
-  ;; Build adjacency lists with weights
-  (define adj-lists (make-vector n null))
+  ;; Two-pass construction for better memory layout
+  ;; Pass 1: Count degree of each vertex
+  (define degrees (make-vector n 0))
+  (for ([edge (in-list edge-triples)])
+    (define u (first edge))
+    (define v (second edge))
+    (vector-set! degrees u (+ 1 (vector-ref degrees u)))
+    (vector-set! degrees v (+ 1 (vector-ref degrees v))))
+
+  ;; Pass 2: Allocate neighbor vectors
+  (define adj (for/vector ([d (in-vector degrees)])
+                (make-vector d)))
+
+  ;; Pass 3: Fill neighbor vectors with (neighbor . weight) pairs
+  (define positions (make-vector n 0))
   (for ([edge (in-list edge-triples)])
     (define u (first edge))
     (define v (second edge))
     (define w (third edge))
-    ;; Add bidirectional edges (undirected graph)
-    (vector-set! adj-lists u (cons (cons v w) (vector-ref adj-lists u)))
-    (vector-set! adj-lists v (cons (cons u w) (vector-ref adj-lists v))))
+    (define u-pos (vector-ref positions u))
+    (define v-pos (vector-ref positions v))
+    (vector-set! (vector-ref adj u) u-pos (cons v w))
+    (vector-set! (vector-ref adj v) v-pos (cons u w))
+    (vector-set! positions u (+ u-pos 1))
+    (vector-set! positions v (+ v-pos 1)))
 
-  ;; Convert to vector of vectors
-  (for/vector ([neighbors (in-vector adj-lists)])
-    (list->vector neighbors)))
+  adj)
 
 ;; Union-Find data structure for MSF
 (struct uf-state (parent rank) #:mutable #:transparent)
@@ -85,40 +99,48 @@
 (define (msf-sequential graph)
   (define n (vector-length graph))
 
-  ;; Collect all edges
-  (define edges
-    (apply append
-           (for/list ([u (in-range n)])
-             (for/list ([neighbor-weight (in-vector (vector-ref graph u))])
-               (define v (car neighbor-weight))
-               (define w (cdr neighbor-weight))
-               (if (< u v)  ; Only include each edge once
-                   (list u v w)
-                   #f)))))
-  (define edges-filtered (filter identity edges))
+  ;; Count edges (only u < v to avoid duplicates)
+  (define edge-count
+    (for/sum ([u (in-range n)])
+      (for/sum ([neighbor-weight (in-vector (vector-ref graph u))])
+        (if (< u (car neighbor-weight)) 1 0))))
+
+  ;; Collect all edges into a vector
+  (define edges (make-vector edge-count))
+  (define pos 0)
+  (for ([u (in-range n)])
+    (for ([neighbor-weight (in-vector (vector-ref graph u))])
+      (define v (car neighbor-weight))
+      (define w (cdr neighbor-weight))
+      (when (< u v)  ; Only include each edge once
+        (vector-set! edges pos (vector u v w))
+        (set! pos (+ pos 1)))))
 
   ;; Sort edges by weight
-  (define sorted-edges (sort edges-filtered < #:key third))
+  (define sorted-edges (vector-sort edges < #:key (λ (e) (vector-ref e 2))))
 
   ;; Kruskal's algorithm
   (define uf (make-union-find n))
-  (define msf-edges null)
+  (define msf-edges (make-vector (- n 1)))  ; MST/MSF has at most n-1 edges
+  (define msf-count 0)
 
-  (for ([edge (in-list sorted-edges)])
-    (define u (first edge))
-    (define v (second edge))
-    (define w (third edge))
+  (for ([edge (in-vector sorted-edges)])
+    (define u (vector-ref edge 0))
+    (define v (vector-ref edge 1))
+    (define w (vector-ref edge 2))
     (unless (= (uf-find! uf u) (uf-find! uf v))
       (uf-union! uf u v)
-      (set! msf-edges (cons edge msf-edges))))
+      (vector-set! msf-edges msf-count (list u v w))
+      (set! msf-count (+ msf-count 1))))
 
-  (reverse msf-edges))
+  (vector->list (vector-copy msf-edges 0 msf-count)))
 
 ;; Parallel MSF using Borůvka's algorithm
 (define (msf-parallel graph workers)
   (define n (vector-length graph))
   (define uf (make-union-find n))
-  (define msf-edges null)
+  (define msf-edges (make-vector (- n 1)))  ; MST/MSF has at most n-1 edges
+  (define msf-count 0)
 
   ;; Borůvka's algorithm: iteratively connect components
   (call-with-thread-pool workers
@@ -164,11 +186,12 @@
             (define w (third edge))
             (unless (= (uf-find! uf u) (uf-find! uf v))
               (uf-union! uf u v)
-              (set! msf-edges (cons edge msf-edges))))
+              (vector-set! msf-edges msf-count edge)
+              (set! msf-count (+ msf-count 1))))
           (loop))))
     #:max n)
 
-  (reverse msf-edges))
+  (vector->list (vector-copy msf-edges 0 msf-count)))
 
 ;; Verify that edges form a valid spanning forest
 (define (verify-spanning-forest graph msf-edges)
@@ -204,18 +227,36 @@
     (error 'generate-random-weighted-graph "need at least 2 vertices, got ~a" n))
   (random-seed seed)
   (define p (/ avg-degree (sub1 n)))
-  (define adj-lists (make-vector n null))
 
-  (for* ([u (in-range n)]
-         [v (in-range (add1 u) n)])
-    (when (< (random) p)
-      (define weight (random 1 1000))
-      (vector-set! adj-lists u (cons (cons v weight) (vector-ref adj-lists u)))
-      (vector-set! adj-lists v (cons (cons u weight) (vector-ref adj-lists v)))))
+  ;; Two-pass construction
+  ;; Pass 1: Count degrees and generate edges
+  (define degrees (make-vector n 0))
+  (define edge-list
+    (for*/list ([u (in-range n)]
+                [v (in-range (add1 u) n)]
+                #:when (< (random) p))
+      (vector-set! degrees u (+ 1 (vector-ref degrees u)))
+      (vector-set! degrees v (+ 1 (vector-ref degrees v)))
+      (list u v (random 1 1000))))
 
-  ;; Convert to vector of vectors
-  (for/vector ([neighbors (in-vector adj-lists)])
-    (list->vector neighbors)))
+  ;; Pass 2: Allocate neighbor vectors
+  (define adj (for/vector ([d (in-vector degrees)])
+                (make-vector d)))
+
+  ;; Pass 3: Fill neighbor vectors with (neighbor . weight) pairs
+  (define positions (make-vector n 0))
+  (for ([edge (in-list edge-list)])
+    (define u (first edge))
+    (define v (second edge))
+    (define w (third edge))
+    (define u-pos (vector-ref positions u))
+    (define v-pos (vector-ref positions v))
+    (vector-set! (vector-ref adj u) u-pos (cons v w))
+    (vector-set! (vector-ref adj v) v-pos (cons u w))
+    (vector-set! positions u (+ u-pos 1))
+    (vector-set! positions v (+ v-pos 1)))
+
+  adj)
 
 (module+ main
   (define n 1000)

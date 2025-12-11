@@ -16,7 +16,8 @@
 ;; Sequential suffix array using prefix-doubling algorithm
 (define (suffix-array-sequential text)
   (define n (string-length text))
-  (define text-vec (list->vector (string->list text)))
+  (define text-vec (for/vector ([i (in-range n)])
+                     (string-ref text i)))
 
   ;; Initial rank based on first character
   (define rank (make-vector n 0))
@@ -30,18 +31,16 @@
   (let loop ([k 1])
     (when (< k n)
       ;; Sort suffixes by (rank[i], rank[i+k])
-      (define sa-list (vector->list sa))
-      (define sorted-sa
-        (sort sa-list
-              (λ (i j)
-                (define ri (vector-ref rank i))
-                (define rj (vector-ref rank j))
-                (if (= ri rj)
-                    (let ([rik (if (< (+ i k) n) (vector-ref rank (+ i k)) -1)]
-                          [rjk (if (< (+ j k) n) (vector-ref rank (+ j k)) -1)])
-                      (< rik rjk))
-                    (< ri rj)))))
-      (set! sa (list->vector sorted-sa))
+      (set! sa
+            (vector-sort sa
+                         (λ (i j)
+                           (define ri (vector-ref rank i))
+                           (define rj (vector-ref rank j))
+                           (if (= ri rj)
+                               (let ([rik (if (< (+ i k) n) (vector-ref rank (+ i k)) -1)]
+                                     [rjk (if (< (+ j k) n) (vector-ref rank (+ j k)) -1)])
+                                 (< rik rjk))
+                               (< ri rj)))))
 
       ;; Update ranks based on new order
       (define new-rank (make-vector n 0))
@@ -65,7 +64,8 @@
 ;; Parallel suffix array using prefix-doubling with thread-pool parallelism
 (define (suffix-array-parallel text workers)
   (define n (string-length text))
-  (define text-vec (list->vector (string->list text)))
+  (define text-vec (for/vector ([i (in-range n)])
+                     (string-ref text i)))
 
   ;; Initial rank based on first character
   (define rank (make-vector n 0))
@@ -105,17 +105,15 @@
             (thread-pool-wait t))
 
           ;; Sort suffixes using the computed key pairs
-          (define sa-list (vector->list sa))
-          (define sorted-sa
-            (sort sa-list
-                  (λ (i j)
-                    (define ri (vector-ref rank i))
-                    (define rj (vector-ref rank j))
-                    (if (= ri rj)
-                        (< (vector-ref secondary i)
-                           (vector-ref secondary j))
-                        (< ri rj)))))
-          (set! sa (list->vector sorted-sa))
+          (set! sa
+                (vector-sort sa
+                             (λ (i j)
+                               (define ri (vector-ref rank i))
+                               (define rj (vector-ref rank j))
+                               (if (= ri rj)
+                                   (< (vector-ref secondary i)
+                                      (vector-ref secondary j))
+                                   (< ri rj)))))
 
           ;; Determine rank boundaries in parallel
           (define diff (make-vector n 0))

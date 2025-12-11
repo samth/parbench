@@ -35,16 +35,34 @@
     [(<= n 1) vec]
     [else
      (define pivot (vector-ref vec (quotient n 2)))
-     (define-values (left equal right)
-       (for/fold ([left '()] [equal '()] [right '()])
+     ;; Count partition sizes
+     (define-values (left-count equal-count right-count)
+       (for/fold ([left-c 0] [equal-c 0] [right-c 0])
                  ([x (in-vector vec)])
          (cond
-           [(< x pivot) (values (cons x left) equal right)]
-           [(> x pivot) (values left equal (cons x right))]
-           [else (values left (cons x equal) right)])))
-     (vector-append (quicksort (list->vector left))
-                    (list->vector equal)
-                    (quicksort (list->vector right)))]))
+           [(< x pivot) (values (+ left-c 1) equal-c right-c)]
+           [(> x pivot) (values left-c equal-c (+ right-c 1))]
+           [else (values left-c (+ equal-c 1) right-c)])))
+     ;; Allocate partition vectors
+     (define left (make-vector left-count))
+     (define equal (make-vector equal-count))
+     (define right (make-vector right-count))
+     ;; Fill partitions
+     (define left-pos 0)
+     (define equal-pos 0)
+     (define right-pos 0)
+     (for ([x (in-vector vec)])
+       (cond
+         [(< x pivot)
+          (vector-set! left left-pos x)
+          (set! left-pos (+ left-pos 1))]
+         [(> x pivot)
+          (vector-set! right right-pos x)
+          (set! right-pos (+ right-pos 1))]
+         [else
+          (vector-set! equal equal-pos x)
+          (set! equal-pos (+ equal-pos 1))]))
+     (vector-append (quicksort left) equal (quicksort right))]))
 
 ;; Sequential samplesort (just use quicksort)
 (define (samplesort-sequential vec)
@@ -66,32 +84,51 @@
      ;; Step 2: Sort samples to get splitters
      (define sorted-samples (quicksort samples))
      (define splitters
-       (for/list ([i (in-range 1 workers)])
+       (for/vector ([i (in-range 1 workers)])
          (vector-ref sorted-samples (* i workers))))
 
-     ;; Step 3: Partition input into buckets
-     (define buckets (make-vector workers '()))
+     ;; Step 3a: Count elements per bucket
+     (define bucket-counts (make-vector workers 0))
      (for ([elem (in-vector vec)])
        (define bucket-idx
-         (let loop ([idx 0] [splitters-list splitters])
+         (let loop ([idx 0])
            (cond
-             [(null? splitters-list) idx]
-             [(< elem (car splitters-list)) idx]
-             [else (loop (add1 idx) (cdr splitters-list))])))
-       (vector-set! buckets bucket-idx
-                    (cons elem (vector-ref buckets bucket-idx))))
+             [(>= idx (vector-length splitters)) idx]
+             [(< elem (vector-ref splitters idx)) idx]
+             [else (loop (add1 idx))])))
+       (vector-set! bucket-counts bucket-idx
+                    (+ 1 (vector-ref bucket-counts bucket-idx))))
+
+     ;; Step 3b: Allocate bucket vectors
+     (define buckets
+       (for/vector ([count (in-vector bucket-counts)])
+         (make-vector count)))
+
+     ;; Step 3c: Fill buckets
+     (define bucket-positions (make-vector workers 0))
+     (for ([elem (in-vector vec)])
+       (define bucket-idx
+         (let loop ([idx 0])
+           (cond
+             [(>= idx (vector-length splitters)) idx]
+             [(< elem (vector-ref splitters idx)) idx]
+             [else (loop (add1 idx))])))
+       (define pos (vector-ref bucket-positions bucket-idx))
+       (define bucket (vector-ref buckets bucket-idx))
+       (vector-set! bucket pos elem)
+       (vector-set! bucket-positions bucket-idx (+ pos 1)))
 
      ;; Step 4: Sort each bucket in parallel
      (define sorted-buckets
        (if (<= workers 1)
-           (for/list ([bucket-list (in-vector buckets)])
-             (quicksort (list->vector bucket-list)))
+           (for/list ([bucket (in-vector buckets)])
+             (quicksort bucket))
            (call-with-thread-pool workers
              (λ (pool actual-workers)
                (define tasks
-                 (for/list ([bucket-list (in-vector buckets)])
+                 (for/list ([bucket (in-vector buckets)])
                    (thread-pool-submit pool
-                                       (λ () (quicksort (list->vector bucket-list))))))
+                                       (λ () (quicksort bucket)))))
                (thread-pool-wait/collect tasks))
              #:max workers)))
 

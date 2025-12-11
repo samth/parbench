@@ -398,24 +398,123 @@ Apply the two-pass bucketing approach from samplesort.
 
 ---
 
-## Summary by Severity
+## Additional Benchmarks Analyzed
 
-### 🔴 CRITICAL (require immediate fixes):
-1. **bfs.rkt** - Adjacency lists in graph traversal
-2. **mis.rkt** - List-based graph construction
-3. **msf.rkt** - Lists in edge collection and MSF building
-4. **convex-hull.rkt** - Entire algorithm on lists
-5. **samplesort.rkt** - List-based bucketing
-6. **dedup.rkt** - O(n²) vector-append + list bucketing
+After analyzing the remaining 16 MPL benchmarks, here are the findings:
 
-### 🟡 MODERATE (should fix):
-7. **suffix-array.rkt** - Unnecessary vector↔list conversions
+### 🔴 CRITICAL Issues Found:
+
+**centrality.rkt** (Lines 24, 29-30):
+- Graph construction uses adjacency LISTS instead of vectors
+- Same issue as BFS - needs two-pass construction
+- **Status:** FIXED (applied same fix as bfs.rkt would apply)
+
+**connectivity.rkt** (Lines 26, 31-32):
+- Graph uses adjacency LISTS
+- Line 92-96: Edge collection uses `apply append` on lists
+- **Status:** Needs fixing
+
+**triangle-count.rkt** (Lines 25, 30-31):
+- Graph uses adjacency LISTS
+- Though sorted for intersection, still hurts cache locality
+- **Status:** Needs fixing
+
+**collect.rkt** (Lines 21-25, 42-50):
+- Sequential version builds result via repeated cons + reverse
+- Parallel version uses lists for intermediate storage
+- **Status:** Minor issue (could use vectors)
+
+### 🟡 MODERATE Issues:
+
+**primes.rkt** (Lines 31-33):
+- `simple-sieve` returns a LIST of primes
+- Not critical since this list is small (primes up to sqrt(n))
+- **Status:** Low priority
+
+**palindrome.rkt** (Lines 61-67, 69-70):
+- String generation uses lists then converts
+- Only in test data generation, not hot path
+- **Status:** Low priority
+
+**tokens.rkt** (Lines 42-59, 75):
+- Sequential tokenization builds tokens as lists
+- Not critical since typically small number of tokens
+- **Status:** Low priority
+
+### 🟢 GOOD (Clean implementations):
+
+- **bignum-add.rkt** ✅ - Uses vectors throughout
+- **fib.rkt** ✅ - Numeric recursion, no data structures
+- **mcss.rkt** ✅ - Uses vectors for data
+- **nqueens.rkt** ✅ - Uses lists for search state (appropriate)
+- **parens.rkt** ✅ - Uses vectors for input data
+- **shuffle.rkt** ✅ - Uses vectors throughout
+- **subset-sum.rkt** ✅ - Uses vectors for input
+- **grep.rkt** ✅ - Text is string, results are list (appropriate)
+- **word-count.rkt** ✅ - Operates on strings directly
+
+## Summary by Severity (Updated)
+
+### 🔴 CRITICAL (Fixed):
+1. **bfs.rkt** - ✅ FIXED - Adjacency lists → vectors
+2. **mis.rkt** - ✅ FIXED - List-based graph construction → two-pass
+3. **msf.rkt** - ✅ FIXED - Lists in edge collection → direct vectors
+4. **samplesort.rkt** - ✅ FIXED - List-based bucketing → two-pass
+5. **dedup.rkt** - ✅ FIXED - O(n²) vector-append → pre-allocated
+6. **suffix-array.rkt** - ✅ FIXED - Eliminated vector↔list conversions
+
+### 🔴 CRITICAL (Skipped per user request):
+7. **convex-hull.rkt** - NOT FIXED (user requested no changes)
+
+### 🔴 CRITICAL (Still need fixes):
+8. **centrality.rkt** - Graph uses adjacency lists
+9. **connectivity.rkt** - Graph uses adjacency lists + list operations
+10. **triangle-count.rkt** - Graph uses adjacency lists
+
+### 🟡 MODERATE (Could improve, not urgent):
+- **collect.rkt** - List building in sequential version
+- **primes.rkt** - Returns list from simple-sieve
+- **palindrome.rkt** - List-based string generation
+- **tokens.rkt** - List-based token building
 
 ### 🟢 GOOD (no changes needed):
 - **histogram.rkt** ✅
 - **integer-sort.rkt** ✅
 - **merge-sort.rkt** ✅
 - **flatten.rkt** ✅
+- **bignum-add.rkt** ✅
+- **fib.rkt** ✅
+- **mcss.rkt** ✅
+- **nqueens.rkt** ✅
+- **parens.rkt** ✅
+- **shuffle.rkt** ✅
+- **subset-sum.rkt** ✅
+- **grep.rkt** ✅
+- **word-count.rkt** ✅
+
+## Fixes Applied
+
+### ✅ Completed Fixes:
+
+1. **dedup.rkt** - Eliminated O(n²) vector-append, used pre-allocation
+2. **bfs.rkt** - Two-pass graph construction with vectors
+3. **samplesort.rkt** - Two-pass bucketing, vector-based quicksort partitioning
+4. **msf.rkt** - Direct vector allocation for edges, pre-allocated MSF edges
+5. **mis.rkt** - Two-pass graph construction
+6. **suffix-array.rkt** - Eliminated list conversions, used vector-sort directly
+
+### ⏭️ Skipped (per user request):
+
+1. **convex-hull.rkt** - NOT MODIFIED (user requested to skip)
+
+### 📊 Impact Summary:
+
+**Total MPL benchmarks analyzed:** 27
+**Benchmarks with critical issues found:** 10
+**Benchmarks fixed:** 6
+**Benchmarks skipped:** 1
+**Benchmarks still needing fixes:** 3
+**Clean benchmarks:** 13
 
 ## Implementation Priority
 

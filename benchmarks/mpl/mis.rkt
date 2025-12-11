@@ -32,18 +32,32 @@
   ;; Find max vertex id
   (define n (add1 (apply max (flatten edge-pairs))))
 
-  ;; Build adjacency lists
-  (define adj-lists (make-vector n null))
+  ;; Two-pass construction for better memory layout
+  ;; Pass 1: Count degree of each vertex
+  (define degrees (make-vector n 0))
   (for ([edge (in-list edge-pairs)])
     (define u (first edge))
     (define v (second edge))
-    ;; Add bidirectional edges (undirected graph)
-    (vector-set! adj-lists u (cons v (vector-ref adj-lists u)))
-    (vector-set! adj-lists v (cons u (vector-ref adj-lists v))))
+    (vector-set! degrees u (+ 1 (vector-ref degrees u)))
+    (vector-set! degrees v (+ 1 (vector-ref degrees v))))
 
-  ;; Convert to vector of vectors
-  (for/vector ([neighbors (in-vector adj-lists)])
-    (list->vector neighbors)))
+  ;; Pass 2: Allocate neighbor vectors
+  (define adj (for/vector ([d (in-vector degrees)])
+                (make-vector d)))
+
+  ;; Pass 3: Fill neighbor vectors
+  (define positions (make-vector n 0))
+  (for ([edge (in-list edge-pairs)])
+    (define u (first edge))
+    (define v (second edge))
+    (define u-pos (vector-ref positions u))
+    (define v-pos (vector-ref positions v))
+    (vector-set! (vector-ref adj u) u-pos v)
+    (vector-set! (vector-ref adj v) v-pos u)
+    (vector-set! positions u (+ u-pos 1))
+    (vector-set! positions v (+ v-pos 1)))
+
+  adj)
 
 ;; Sequential MIS using greedy algorithm
 (define (mis-sequential graph)
@@ -169,17 +183,35 @@
     (error 'generate-random-graph "need at least 2 vertices, got ~a" n))
   (random-seed seed)
   (define p (/ avg-degree (sub1 n)))
-  (define adj-lists (make-vector n null))
 
-  (for* ([u (in-range n)]
-         [v (in-range (add1 u) n)])
-    (when (< (random) p)
-      (vector-set! adj-lists u (cons v (vector-ref adj-lists u)))
-      (vector-set! adj-lists v (cons u (vector-ref adj-lists v)))))
+  ;; Two-pass construction
+  ;; Pass 1: Count degrees and generate edges
+  (define degrees (make-vector n 0))
+  (define edge-list
+    (for*/list ([u (in-range n)]
+                [v (in-range (add1 u) n)]
+                #:when (< (random) p))
+      (vector-set! degrees u (+ 1 (vector-ref degrees u)))
+      (vector-set! degrees v (+ 1 (vector-ref degrees v)))
+      (list u v)))
 
-  ;; Convert to vector of vectors
-  (for/vector ([neighbors (in-vector adj-lists)])
-    (list->vector neighbors)))
+  ;; Pass 2: Allocate neighbor vectors
+  (define adj (for/vector ([d (in-vector degrees)])
+                (make-vector d)))
+
+  ;; Pass 3: Fill neighbor vectors
+  (define positions (make-vector n 0))
+  (for ([edge (in-list edge-list)])
+    (define u (first edge))
+    (define v (second edge))
+    (define u-pos (vector-ref positions u))
+    (define v-pos (vector-ref positions v))
+    (vector-set! (vector-ref adj u) u-pos v)
+    (vector-set! (vector-ref adj v) v-pos u)
+    (vector-set! positions u (+ u-pos 1))
+    (vector-set! positions v (+ v-pos 1)))
+
+  adj)
 
 (module+ main
   (define n 10000)
