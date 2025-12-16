@@ -31,6 +31,9 @@
 ;; Parallel shuffle - partition vector and shuffle chunks independently,
 ;; then do a final merge shuffle. Note: produces different permutation than
 ;; sequential (different random choices), but still valid shuffle.
+;; WARNING: Parallel version is SLOWER than sequential due to allocation
+;; overhead from copying chunks. Sequential Fisher-Yates is O(n) in-place,
+;; while parallel requires O(n) extra allocations. Included for completeness.
 (define (shuffle-parallel vec workers seed [chunk-size 10000])
   (define n (vector-length vec))
 
@@ -38,14 +41,15 @@
       ;; Too small for parallelism
       (shuffle-sequential vec seed)
       ;; Shuffle chunks in parallel
-      (let* ([num-chunks (quotient (+ n chunk-size -1) chunk-size)]
+      (let* ([pool (make-parallel-thread-pool workers)]
+             [num-chunks (quotient (+ n chunk-size -1) chunk-size)]
              ;; Phase 1: Shuffle each chunk independently with different seeds
              [channels
               (for/list ([c (in-range num-chunks)])
                 (define start (* c chunk-size))
                 (define end (min (+ start chunk-size) n))
                 (define ch (make-channel))
-                (thread
+                (thread #:pool pool
                  (λ ()
                    ;; Extract chunk, shuffle it
                    (define chunk (make-vector (- end start)))
@@ -61,6 +65,7 @@
           (define chunk (list-ref shuffled-chunks c))
           (for ([i (in-range (vector-length chunk))])
             (vector-set! result (+ start i) (vector-ref chunk i))))
+        (parallel-thread-pool-close pool)
         result)))
 
 ;; Verify that result is a permutation of original

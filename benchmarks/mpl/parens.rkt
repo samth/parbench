@@ -59,6 +59,7 @@
                        (cons 0 1)))
       (combine-paren-counts counts elem)))
 
+  (define pool (make-parallel-thread-pool workers))
   (define partial-results
     (if (<= workers 1)
         (list (process-range 0 n))
@@ -68,9 +69,10 @@
                 (for/list ([start (in-range 0 n chunk-size)])
                   (define end (min n (+ start chunk-size)))
                   (define ch (make-channel))
-                  (thread (λ () (channel-put ch (process-range start end))))
+                  (thread #:pool pool (λ () (channel-put ch (process-range start end))))
                   ch)])
           (map channel-get channels))))
+  (parallel-thread-pool-close pool)
 
   (define final-result
     (for/fold ([acc (cons 0 0)])

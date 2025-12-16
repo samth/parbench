@@ -39,13 +39,66 @@
                [new-max-so-far (max max-so-far new-max-ending)])
           (loop (add1 i) new-max-so-far new-max-ending)))))
 
-;; Parallel MCSS
-;; NOTE: Proper parallel MCSS requires handling subarrays crossing chunk boundaries
-;; For now, using sequential algorithm wrapped in futures as a placeholder
+;; Parallel MCSS using reduction with tuple (best, prefix, suffix, total)
+;; This properly handles subarrays crossing chunk boundaries
+;; WARNING: Parallel version is SLOWER than sequential due to allocation
+;; overhead from creating tuple vectors. Sequential Kadane's is O(n) with
+;; constant space, while parallel requires O(n) tuple allocations.
 (define (mcss-parallel data workers)
-  ;; TODO: Implement proper parallel MCSS with cross-boundary handling
-  ;; For now, just use sequential to ensure correctness
-  (mcss-sequential data))
+  (define n (vector-length data))
+  (when (= n 0) (error 'mcss "empty data"))
+
+  ;; Tuple representation: (best prefix suffix total)
+  ;; For single element x: (x, x, x, x)
+  (define (make-tuple x) (vector x x x x))
+  (define (tuple-best t) (vector-ref t 0))
+  (define (tuple-prefix t) (vector-ref t 1))
+  (define (tuple-suffix t) (vector-ref t 2))
+  (define (tuple-total t) (vector-ref t 3))
+
+  ;; Combine two tuples - associative operation for reduction
+  (define (combine t1 t2)
+    (define best1 (tuple-best t1))
+    (define prefix1 (tuple-prefix t1))
+    (define suffix1 (tuple-suffix t1))
+    (define total1 (tuple-total t1))
+    (define best2 (tuple-best t2))
+    (define prefix2 (tuple-prefix t2))
+    (define suffix2 (tuple-suffix t2))
+    (define total2 (tuple-total t2))
+    (vector (max best1 best2 (+ suffix1 prefix2))           ; best spans boundary
+            (max prefix1 (+ total1 prefix2))                ; prefix extends into right
+            (max suffix2 (+ suffix1 total2))                ; suffix extends into left
+            (+ total1 total2)))                             ; total sum
+
+  ;; Process a range and return combined tuple
+  (define (process-range start end)
+    (let loop ([i (add1 start)]
+               [acc (make-tuple (vector-ref data start))])
+      (if (>= i end)
+          acc
+          (loop (add1 i) (combine acc (make-tuple (vector-ref data i)))))))
+
+  (define pool (make-parallel-thread-pool workers))
+  (define chunk-size (max 1 (quotient (+ n workers -1) workers)))
+
+  (define channels
+    (for/list ([start (in-range 0 n chunk-size)])
+      (define end (min n (+ start chunk-size)))
+      (define ch (make-channel))
+      (thread #:pool pool (λ () (channel-put ch (process-range start end))))
+      ch))
+
+  (define partial-results (map channel-get channels))
+  (parallel-thread-pool-close pool)
+
+  ;; Reduce partial results
+  (define final-tuple
+    (for/fold ([acc (first partial-results)])
+              ([t (in-list (rest partial-results))])
+      (combine acc t)))
+
+  (tuple-best final-tuple))
 
 (module+ main
   (define n 1000000)

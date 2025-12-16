@@ -2,7 +2,6 @@
 
 (require racket/fixnum
          racket/unsafe/ops
-         data/queue
          "../common/cli.rkt"
          "../common/run.rkt"
          "../common/logging.rkt")
@@ -44,7 +43,7 @@
   (graph n adj))
 
 ;; ============================================================================
-;; Sequential BFS
+;; Sequential BFS (frontier-based, same algorithm as parallel)
 ;; ============================================================================
 
 (define (bfs-sequential g source)
@@ -53,17 +52,19 @@
   (define parent (make-vector n -1))
   (vector-set! parent source source)
 
-  (define queue (make-queue))
-  (enqueue! queue source)
-
-  (let loop ()
-    (unless (queue-empty? queue)
-      (define u (dequeue! queue))
-      (for ([v (in-vector (vector-ref adj u))])
-        (when (fx= -1 (vector-ref parent v))
-          (vector-set! parent v u)
-          (enqueue! queue v)))
-      (loop)))
+  ;; Use vector-based frontier (same approach as parallel version)
+  (let loop ([frontier (vector source)])
+    (define frontier-size (vector-length frontier))
+    (when (> frontier-size 0)
+      (define next-frontier
+        (list->vector
+         (for*/list ([i (in-range frontier-size)]
+                     [u (in-value (vector-ref frontier i))]
+                     [v (in-vector (vector-ref adj u))]
+                     #:when (fx= -1 (vector-ref parent v)))
+           (vector-set! parent v u)
+           v)))
+      (loop next-frontier)))
 
   parent)
 
@@ -83,6 +84,9 @@
   ;; We use vector-cas! to atomically claim vertices
   (define parent (make-vector n -1))
   (vector-set! parent source source)
+
+  ;; Create thread pool for true OS-level parallelism
+  (define pool (make-parallel-thread-pool workers))
 
   ;; Double-buffered frontiers as vectors
   (define current-frontier (vector source))
@@ -112,7 +116,7 @@
                       (if (fx>= start frontier-size)
                           #f
                           (let ([ch (make-channel)])
-                            (thread
+                            (thread #:pool pool
                              (lambda ()
                                (channel-put ch
                                  (for*/list ([i (in-range start end)]
@@ -128,6 +132,7 @@
 
       (loop next-frontier)))
 
+  (parallel-thread-pool-close pool)
   parent)
 
 ;; ============================================================================

@@ -87,21 +87,25 @@
     [(or (<= workers 1) (zero? len))
      (word-count-sequential text)]
     [else
-     (let* ([task-count (max 1 (min workers len))]
-            [chunk-size (max 1 (ceiling (/ len task-count)))]
-            [channels
-             (for/list ([start (in-range 0 len chunk-size)])
-               (define end (min len (+ start chunk-size)))
-               (define ch (make-channel))
-               (thread (λ () (channel-put ch (compute-wc-chunk text start end))))
-               ch)]
-            [summaries (map channel-get channels)])
-       (define total-lines 0)
-       (define total-words 0)
-       (for ([summary (in-list summaries)])
-         (set! total-lines (+ total-lines (wc-chunk-lines summary)))
-         (set! total-words (+ total-words (wc-chunk-word-starts summary))))
-       (list total-lines total-words len))]))
+     (define pool (make-parallel-thread-pool workers))
+     (define result
+       (let* ([task-count (max 1 (min workers len))]
+              [chunk-size (max 1 (ceiling (/ len task-count)))]
+              [channels
+               (for/list ([start (in-range 0 len chunk-size)])
+                 (define end (min len (+ start chunk-size)))
+                 (define ch (make-channel))
+                 (thread #:pool pool (λ () (channel-put ch (compute-wc-chunk text start end))))
+                 ch)]
+              [summaries (map channel-get channels)])
+         (define total-lines 0)
+         (define total-words 0)
+         (for ([summary (in-list summaries)])
+           (set! total-lines (+ total-lines (wc-chunk-lines summary)))
+           (set! total-words (+ total-words (wc-chunk-word-starts summary))))
+         (list total-lines total-words len)))
+     (parallel-thread-pool-close pool)
+     result]))
 
 (module+ main
   (define size 1000000)

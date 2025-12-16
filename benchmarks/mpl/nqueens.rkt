@@ -50,13 +50,16 @@
   ;; Parallelize over first row placements
   (if (<= workers 1)
       (nqueens-sequential n)
-      (let ([channels
-             (for/list ([col (in-range n)])
-               (define ch (make-channel))
-               (thread (λ () (channel-put ch (search 1 (list col)))))
-               ch)])
-        (for/sum ([ch (in-list channels)])
-          (channel-get ch)))))
+      (let* ([pool (make-parallel-thread-pool workers)]
+             [channels
+              (for/list ([col (in-range n)])
+                (define ch (make-channel))
+                (thread #:pool pool (λ () (channel-put ch (search 1 (list col)))))
+                ch)]
+             [result (for/sum ([ch (in-list channels)])
+                       (channel-get ch))])
+        (parallel-thread-pool-close pool)
+        result)))
 
 (module+ main
   (define n 12)

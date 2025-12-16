@@ -27,12 +27,12 @@
 ;; Sequential deduplication using hash table
 (define (dedup-sequential data)
   (define seen (make-hash))
-  (define result (make-vector 0))
+  (define result '())
   (for ([elem (in-vector data)])
     (unless (hash-has-key? seen elem)
       (hash-set! seen elem #t)
-      (set! result (vector-append result (vector elem)))))
-  result)
+      (set! result (cons elem result))))
+  (list->vector (reverse result)))
 
 ;; Parallel deduplication using bucketing
 (define (dedup-parallel data workers)
@@ -60,14 +60,26 @@
     (if (<= workers 1)
         (for/list ([bucket-idx (in-range num-buckets)])
           (dedupe-bucket (vector-ref buckets bucket-idx)))
-        (let ([channels
-               (for/list ([bucket-idx (in-range num-buckets)])
-                 (define ch (make-channel))
-                 (thread
-                  (λ ()
-                    (channel-put ch (dedupe-bucket (vector-ref buckets bucket-idx)))))
-                 ch)])
-          (map channel-get channels))))
+        ;; Chunk buckets across workers
+        (let* ([pool (make-parallel-thread-pool workers)]
+               [chunk-size (quotient (+ num-buckets workers -1) workers)]
+               [channels
+                (for/list ([w (in-range workers)])
+                  (define start-idx (* w chunk-size))
+                  (define end-idx (min (+ start-idx chunk-size) num-buckets))
+                  (if (>= start-idx num-buckets)
+                      #f
+                      (let ([ch (make-channel)])
+                        (thread #:pool pool
+                         (λ ()
+                           (channel-put ch
+                             (for/list ([bucket-idx (in-range start-idx end-idx)])
+                               (dedupe-bucket (vector-ref buckets bucket-idx))))))
+                        ch)))]
+               [results (apply append (for/list ([ch channels] #:when ch)
+                                        (channel-get ch)))])
+          (parallel-thread-pool-close pool)
+          results)))
 
   ;; Step 4: Flatten results
   (list->vector (apply append deduped-lists)))

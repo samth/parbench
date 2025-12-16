@@ -32,13 +32,14 @@
       ;; Too small for parallelism
       (palindrome-sequential str)
       ;; Check chunks in parallel
-      (let* ([num-chunks (quotient (+ half chunk-size -1) chunk-size)]
+      (let* ([pool (make-parallel-thread-pool workers)]
+             [num-chunks (quotient (+ half chunk-size -1) chunk-size)]
              [channels
               (for/list ([c (in-range num-chunks)])
                 (define start (* c chunk-size))
                 (define end (min (+ start chunk-size) half))
                 (define ch (make-channel))
-                (thread
+                (thread #:pool pool
                  (λ ()
                    (channel-put ch
                      (for/and ([i (in-range start end)])
@@ -46,26 +47,28 @@
                                (string-ref str (- n i 1)))))))
                 ch)]
              [results (map channel-get channels)])
+        (parallel-thread-pool-close pool)
         ;; All chunks must return #t
         (andmap values results))))
 
-;; Generate test string - palindrome or not
+;; Generate test string - palindrome or not (using vector for efficiency)
 (define (generate-test-string n palindrome? seed)
   (random-seed seed)
-  (define chars (if palindrome?
-                    ;; Generate palindrome
-                    (let* ([half (quotient n 2)]
-                           [first-half (for/list ([i (in-range half)])
-                                         (integer->char (+ 97 (random 26))))]
-                           [middle (if (odd? n)
-                                       (list (integer->char (+ 97 (random 26))))
-                                       '())]
-                           [second-half (reverse first-half)])
-                      (append first-half middle second-half))
-                    ;; Generate random string (likely not palindrome)
-                    (for/list ([i (in-range n)])
-                      (integer->char (+ 97 (random 26))))))
-  (list->string chars))
+  (define result (make-string n))
+  (define half (quotient n 2))
+  (if palindrome?
+      ;; Generate palindrome
+      (begin
+        (for ([i (in-range half)])
+          (define c (integer->char (+ 97 (random 26))))
+          (string-set! result i c)
+          (string-set! result (- n i 1) c))
+        (when (odd? n)
+          (string-set! result half (integer->char (+ 97 (random 26))))))
+      ;; Generate random string (likely not palindrome)
+      (for ([i (in-range n)])
+        (string-set! result i (integer->char (+ 97 (random 26))))))
+  result)
 
 (module+ main
   (define n 10000000)

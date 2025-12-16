@@ -51,24 +51,49 @@
 
   dist)
 
+;; Core computation: compute dependency scores from distances
+(define (compute-dependency-range dist n start end)
+  (define local-dep (make-vector (- end start) 0.0))
+  (for ([i (in-range start end)])
+    (define d (vector-ref dist i))
+    (when (>= d 0)
+      (vector-set! local-dep (- i start) (exact->inexact d))))
+  local-dep)
+
 ;; Sequential centrality (simplified: just compute from one source)
 (define (centrality-sequential graph source)
   (define n (vector-length graph))
   (define dist (bfs-distances graph source))
+  (compute-dependency-range dist n 0 n))
 
-  ;; Compute dependency scores (simplified)
-  (define dependency (make-vector n 0.0))
-  (for ([v (in-range n)])
-    (when (>= (vector-ref dist v) 0)
-      (vector-set! dependency v (exact->inexact (vector-ref dist v)))))
-
-  dependency)
-
-;; Parallel centrality (simplified: same as sequential for correctness)
+;; Parallel centrality - parallelize dependency score computation
+;; WARNING: Parallel shows no speedup because BFS dominates the runtime
+;; and is sequential. The dependency computation is O(n) which is trivial.
 (define (centrality-parallel graph source workers)
-  ;; Full parallel betweenness centrality is complex
-  ;; For now, use sequential to ensure correctness
-  (centrality-sequential graph source))
+  (define n (vector-length graph))
+  (define dist (bfs-distances graph source))  ; BFS is sequential
+
+  (if (<= workers 1)
+      (centrality-sequential graph source)
+      (let* ([pool (make-parallel-thread-pool workers)]
+             [chunk-size (max 1 (ceiling (/ n workers)))]
+             [channels
+              (for/list ([start (in-range 0 n chunk-size)])
+                (define end (min n (+ start chunk-size)))
+                (define ch (make-channel))
+                (thread #:pool pool
+                        (λ () (channel-put ch (cons start (compute-dependency-range dist n start end)))))
+                ch)]
+             [chunks (map channel-get channels)]
+             [dependency (make-vector n 0.0)])
+        ;; Merge results
+        (for ([chunk (in-list chunks)])
+          (define start (car chunk))
+          (define local-dep (cdr chunk))
+          (for ([i (in-range (vector-length local-dep))])
+            (vector-set! dependency (+ start i) (vector-ref local-dep i))))
+        (parallel-thread-pool-close pool)
+        dependency)))
 
 (module+ main
   (define n 1000)

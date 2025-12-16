@@ -27,6 +27,7 @@
 (define (histogram-parallel data buckets workers)
   (define n (vector-length data))
   (define chunk-size (quotient (+ n workers -1) workers))
+  (define pool (make-parallel-thread-pool workers))
 
   ;; Phase 1: Parallel local histogram computation
   (define local-hists
@@ -37,7 +38,7 @@
              (if (>= start n)
                  #f
                  (let ([ch (make-channel)])
-                   (thread
+                   (thread #:pool pool
                     (lambda ()
                       (define local-counts (make-vector buckets 0))
                       (for ([i (in-range start end)])
@@ -60,7 +61,7 @@
            (define bucket-end (min (+ bucket-start bucket-chunk) buckets))
            (if (>= bucket-start buckets)
                #f
-               (thread
+               (thread #:pool pool
                 (lambda ()
                   (for ([b (in-range bucket-start bucket-end)])
                     (define sum 0)
@@ -69,6 +70,7 @@
                     (vector-set! result b sum))))))])
     (for ([t threads] #:when t) (thread-wait t)))
 
+  (parallel-thread-pool-close pool)
   result)
 
 ;; ============================================================================

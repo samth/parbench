@@ -106,7 +106,7 @@
               #:when (vector-ref flags i))
       1))
 
-  ;; Divide work among workers
+  ;; Divide range into segments
   (define block-size (* sqrt-n 8))
   (define segments
     (for/list ([start (in-range (add1 sqrt-n) (add1 n) block-size)])
@@ -116,12 +116,28 @@
      (if (<= workers 1)
          (for/sum ([seg (in-list segments)])
            (sieve-segment (car seg) (cdr seg)))
-         (let ([channels
-                (for/list ([seg (in-list segments)])
-                  (define ch (make-channel))
-                  (thread (λ () (channel-put ch (sieve-segment (car seg) (cdr seg)))))
-                  ch)])
-           (apply + (map channel-get channels))))))
+         ;; Parallel: chunk segments across workers
+         (let* ([pool (make-parallel-thread-pool workers)]
+                [seg-vec (list->vector segments)]
+                [num-segs (vector-length seg-vec)]
+                [chunk-size (quotient (+ num-segs workers -1) workers)]
+                [channels
+                 (for/list ([w (in-range workers)])
+                   (define start-idx (* w chunk-size))
+                   (define end-idx (min (+ start-idx chunk-size) num-segs))
+                   (if (>= start-idx num-segs)
+                       #f
+                       (let ([ch (make-channel)])
+                         (thread #:pool pool
+                          (λ ()
+                            (channel-put ch
+                              (for/sum ([i (in-range start-idx end-idx)])
+                                (define seg (vector-ref seg-vec i))
+                                (sieve-segment (car seg) (cdr seg))))))
+                         ch)))]
+                [result (apply + (for/list ([ch channels] #:when ch) (channel-get ch)))])
+           (parallel-thread-pool-close pool)
+           result))))
 
 (module+ main
   (define n 10000000)

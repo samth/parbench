@@ -81,6 +81,7 @@
                     (cons elem (vector-ref buckets bucket-idx))))
 
      ;; Step 4: Sort each bucket in parallel
+     (define pool (make-parallel-thread-pool workers))
      (define sorted-buckets
        (if (<= workers 1)
            (for/list ([bucket-list (in-vector buckets)])
@@ -88,9 +89,10 @@
            (let ([channels
                   (for/list ([bucket-list (in-vector buckets)])
                     (define ch (make-channel))
-                    (thread (λ () (channel-put ch (quicksort (list->vector bucket-list)))))
+                    (thread #:pool pool (λ () (channel-put ch (quicksort (list->vector bucket-list)))))
                     ch)])
              (map channel-get channels))))
+     (parallel-thread-pool-close pool)
 
      ;; Step 5: Concatenate sorted buckets
      (apply vector-append sorted-buckets)]))

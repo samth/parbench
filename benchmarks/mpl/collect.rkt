@@ -29,6 +29,7 @@
 (define (collect-parallel vec pred workers)
   (define n (vector-length vec))
   (define chunk-size (quotient (+ n workers -1) workers))
+  (define pool (make-parallel-thread-pool workers))
 
   ;; Phase 1: Filter in parallel, compute local counts
   (define channels1
@@ -36,7 +37,7 @@
       (define ch (make-channel))
       (define start (* w chunk-size))
       (define end (min (+ start chunk-size) n))
-      (thread
+      (thread #:pool pool
        (λ ()
          ;; Identify matches in this chunk
          (define matches '())
@@ -64,17 +65,21 @@
                 (+ pos (length (car chunks)))
                 (cons (cons pos (car chunks)) acc)))))
 
-  (define threads2
+  (define channels2
     (for/list ([pos-chunk (in-list positions)])
       (define pos (car pos-chunk))
       (define chunk (cdr pos-chunk))
-      (thread
+      (define ch (make-channel))
+      (thread #:pool pool
        (λ ()
          (for ([i (in-naturals)]
                [match (in-list chunk)])
-           (vector-set! result (+ pos i) (cdr match)))))))
+           (vector-set! result (+ pos i) (cdr match)))
+         (channel-put ch #t)))
+      ch))
 
-  (for-each thread-wait threads2)
+  (for-each channel-get channels2)
+  (parallel-thread-pool-close pool)
 
   result)
 

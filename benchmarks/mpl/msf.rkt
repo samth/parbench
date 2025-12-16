@@ -80,36 +80,38 @@
        (vector-set! parent ry rx)
        (vector-set! rank rx (add1 rx-rank))])))
 
-;; Sequential MSF using Kruskal's algorithm
+;; Sequential MSF using Borůvka's algorithm (same as parallel for fair comparison)
 (define (msf-sequential graph)
   (define n (vector-length graph))
-
-  ;; Collect all edges
-  (define edges
-    (apply append
-           (for/list ([u (in-range n)])
-             (for/list ([neighbor-weight (in-vector (vector-ref graph u))])
-               (define v (car neighbor-weight))
-               (define w (cdr neighbor-weight))
-               (if (< u v)  ; Only include each edge once
-                   (list u v w)
-                   #f)))))
-  (define edges-filtered (filter identity edges))
-
-  ;; Sort edges by weight
-  (define sorted-edges (sort edges-filtered < #:key third))
-
-  ;; Kruskal's algorithm
   (define uf (make-union-find n))
   (define msf-edges null)
 
-  (for ([edge (in-list sorted-edges)])
-    (define u (first edge))
-    (define v (second edge))
-    (define w (third edge))
-    (unless (= (uf-find! uf u) (uf-find! uf v))
-      (uf-union! uf u v)
-      (set! msf-edges (cons edge msf-edges))))
+  ;; Borůvka's algorithm: iteratively connect components
+  (let loop ()
+    ;; Find the lightest edge from each component (sequentially)
+    (define lightest (make-hash))
+    (for ([u (in-range n)])
+      (define u-root (uf-find! uf u))
+      (for ([neighbor-weight (in-vector (vector-ref graph u))])
+        (define v (car neighbor-weight))
+        (define wt (cdr neighbor-weight))
+        (define v-root (uf-find! uf v))
+        (when (not (= u-root v-root))
+          (define current (hash-ref lightest u-root #f))
+          (when (or (not current) (< wt (third current)))
+            (hash-set! lightest u-root (list u v wt))))))
+
+    ;; If no edges found, we're done
+    (when (> (hash-count lightest) 0)
+      ;; Add edges to MSF and union components
+      (for ([edge (in-hash-values lightest)])
+        (define u (first edge))
+        (define v (second edge))
+        (define wt (third edge))
+        (unless (= (uf-find! uf u) (uf-find! uf v))
+          (uf-union! uf u v)
+          (set! msf-edges (cons edge msf-edges))))
+      (loop)))
 
   (reverse msf-edges))
 
@@ -118,6 +120,9 @@
   (define n (vector-length graph))
   (define uf (make-union-find n))
   (define msf-edges null)
+
+  ;; Create thread pool for true OS-level parallelism
+  (define pool (make-parallel-thread-pool workers))
 
   ;; Borůvka's algorithm: iteratively connect components
   (let loop ()
@@ -128,7 +133,7 @@
         (define start (* w chunk-size))
         (define end (min (+ start chunk-size) n))
         (define ch (make-channel))
-        (thread
+        (thread #:pool pool
          (λ ()
            (define lightest (make-hash))
            (for ([u (in-range start end)])
@@ -165,6 +170,7 @@
           (set! msf-edges (cons edge msf-edges))))
       (loop)))
 
+  (parallel-thread-pool-close pool)
   (reverse msf-edges))
 
 ;; Verify that edges form a valid spanning forest
@@ -195,20 +201,24 @@
   ;; Spanning means all reachable vertices are connected
   #t)
 
-;; Generate random weighted graph
+;; Generate random weighted graph - O(n * avg-degree) instead of O(n^2)
 (define (generate-random-weighted-graph n avg-degree seed)
   (when (< n 2)
     (error 'generate-random-weighted-graph "need at least 2 vertices, got ~a" n))
   (random-seed seed)
-  (define p (/ avg-degree (sub1 n)))
   (define adj-lists (make-vector n null))
+  (define edge-set (make-hash))  ; Track edges to avoid duplicates
 
-  (for* ([u (in-range n)]
-         [v (in-range (add1 u) n)])
-    (when (< (random) p)
-      (define weight (random 1 1000))
-      (vector-set! adj-lists u (cons (cons v weight) (vector-ref adj-lists u)))
-      (vector-set! adj-lists v (cons (cons u weight) (vector-ref adj-lists v)))))
+  ;; For each vertex, add approximately avg-degree edges
+  (for ([u (in-range n)])
+    (for ([_ (in-range avg-degree)])
+      (define v (random n))
+      (when (and (not (= u v))
+                 (not (hash-ref edge-set (cons (min u v) (max u v)) #f)))
+        (define weight (random 1 1000))
+        (hash-set! edge-set (cons (min u v) (max u v)) #t)
+        (vector-set! adj-lists u (cons (cons v weight) (vector-ref adj-lists u)))
+        (vector-set! adj-lists v (cons (cons u weight) (vector-ref adj-lists v))))))
 
   ;; Convert to vector of vectors
   (for/vector ([neighbors (in-vector adj-lists)])

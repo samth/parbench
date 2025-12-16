@@ -21,7 +21,7 @@
 
 ;; Parallel reduce with granularity control
 ;; Returns (values best-idx best-val) where f returns (idx . val)
-(define (parallel-reduce-max f n workers)
+(define (parallel-reduce-max f n workers pool)
   (if (< n GRAIN)
       ;; Sequential
       (let loop ([i 0] [best-idx -1] [best-val -inf.0])
@@ -42,7 +42,7 @@
                 (if (>= start n)
                     #f
                     (let ([ch (make-channel)])
-                      (thread
+                      (thread #:pool pool
                        (lambda ()
                          (let loop ([i start] [best-idx -1] [best-val -inf.0])
                            (if (>= i end)
@@ -63,7 +63,7 @@
               (values best-idx best-val))))))
 
 ;; Parallel filter - returns indices that satisfy predicate
-(define (parallel-filter pred? n workers)
+(define (parallel-filter pred? n workers pool)
   (if (< n GRAIN)
       ;; Sequential
       (for/vector ([i (in-range n)] #:when (pred? i)) i)
@@ -76,7 +76,7 @@
                 (if (>= start n)
                     #f
                     (let ([ch (make-channel)])
-                      (thread
+                      (thread #:pool pool
                        (lambda ()
                          (channel-put ch
                            (for/list ([i (in-range start end)] #:when (pred? i)) i))))
@@ -87,7 +87,7 @@
 ;; Parallel split into left/right based on predicate
 ;; Returns (values left-indices right-indices)
 ;; index-fn maps iteration index to actual value to store (usually identity or vector-ref)
-(define (parallel-split-indexed left-pred? right-pred? index-fn n workers)
+(define (parallel-split-indexed left-pred? right-pred? index-fn n workers pool)
   (if (< n GRAIN)
       ;; Sequential
       (let loop ([i 0] [left '()] [right '()])
@@ -108,7 +108,7 @@
                 (if (>= start n)
                     #f
                     (let ([ch (make-channel)])
-                      (thread
+                      (thread #:pool pool
                        (lambda ()
                          (let loop ([i start] [left '()] [right '()])
                            (if (>= i end)
@@ -221,7 +221,7 @@
 ;; Parallel QuickHull (MPL-style)
 ;; ============================================================================
 
-(define (quickhull-parallel pts indices a b workers threshold)
+(define (quickhull-parallel pts indices a b workers threshold pool)
   (define n (vector-length indices))
   (cond
     [(= n 0) '()]
@@ -239,7 +239,7 @@
           (define idx (vector-ref indices i))
           (define dist (signed-area pt-a pt-b (vector-ref pts idx)))
           (cons idx dist))
-        n workers))
+        n workers pool))
 
      (if (= best-idx -1)
          '()
@@ -252,15 +252,16 @@
               (lambda (i)
                 (fl> (signed-area pt-mid pt-b (vector-ref pts (vector-ref indices i))) 0.0))
               (lambda (i) (vector-ref indices i))
-              n workers))
+              n workers pool))
 
            ;; Fork-join: process left and right in parallel
            (define left-ch (make-channel))
-           (thread (lambda ()
-                     (channel-put left-ch
-                       (quickhull-parallel pts left-indices a best-idx workers threshold))))
+           (thread #:pool pool
+            (lambda ()
+              (channel-put left-ch
+                (quickhull-parallel pts left-indices a best-idx workers threshold pool))))
            (define right-hull
-             (quickhull-parallel pts right-indices best-idx b workers threshold))
+             (quickhull-parallel pts right-indices best-idx b workers threshold pool))
            (define left-hull (channel-get left-ch))
 
            (append left-hull (list best-idx) right-hull)))]))
@@ -271,15 +272,18 @@
   (when (< n 3)
     (error 'convex-hull-parallel "Need at least 3 points"))
 
+  ;; Create thread pool for true OS-level parallelism
+  (define pool (make-parallel-thread-pool workers))
+
   ;; Parallel reduce to find leftmost and rightmost
   (define-values (left-idx _l)
     (parallel-reduce-max
      (lambda (i) (cons i (fl- 0.0 (point-x (vector-ref pts i)))))  ; negate for min
-     n workers))
+     n workers pool))
   (define-values (right-idx _r)
     (parallel-reduce-max
      (lambda (i) (cons i (point-x (vector-ref pts i))))
-     n workers))
+     n workers pool))
 
   (define pt-l (vector-ref pts left-idx))
   (define pt-r (vector-ref pts right-idx))
@@ -291,16 +295,19 @@
      (lambda (i) (fl> (signed-area pt-l pt-r (vector-ref pts i)) 0.0))
      (lambda (i) (fl< (signed-area pt-l pt-r (vector-ref pts i)) 0.0))
      (lambda (i) i)  ; identity - i is already the point index
-     n workers))
+     n workers pool))
 
   ;; Fork-join for upper and lower hulls
   (define upper-ch (make-channel))
-  (thread (lambda ()
-            (channel-put upper-ch
-              (quickhull-parallel pts upper-indices left-idx right-idx workers threshold))))
+  (thread #:pool pool
+   (lambda ()
+     (channel-put upper-ch
+       (quickhull-parallel pts upper-indices left-idx right-idx workers threshold pool))))
   (define lower-hull
-    (quickhull-parallel pts lower-indices right-idx left-idx workers threshold))
+    (quickhull-parallel pts lower-indices right-idx left-idx workers threshold pool))
   (define upper-hull (channel-get upper-ch))
+
+  (parallel-thread-pool-close pool)
 
   ;; Convert indices to points
   (append (list (vector-ref pts left-idx))

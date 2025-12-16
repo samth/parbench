@@ -44,19 +44,52 @@
   (for/vector ([neighbors (in-vector adj-lists)])
     (list->vector neighbors)))
 
-;; Sequential MIS using greedy algorithm
-(define (mis-sequential graph)
+;; Sequential MIS using Luby's randomized algorithm (same as parallel, but sequential)
+;; This ensures fair comparison between sequential and parallel
+(define (mis-sequential graph [seed 42])
   (define n (vector-length graph))
   (define in-mis (make-vector n #f))
-  (define removed (make-vector n #f))
+  (define active (make-vector n #t))
+  (define active-count n)
 
-  (for ([v (in-range n)])
-    (unless (vector-ref removed v)
-      ;; Add v to MIS
-      (vector-set! in-mis v #t)
-      ;; Remove all neighbors
-      (for ([u (in-vector (vector-ref graph v))])
-        (vector-set! removed u #t))))
+  (random-seed seed)
+
+  ;; Iterate until all vertices are processed
+  (let loop ([round 0])
+    (when (> active-count 0)
+      ;; Assign random priorities to active vertices
+      (define priorities (make-vector n 0))
+      (for ([v (in-range n)]
+            #:when (vector-ref active v))
+        (vector-set! priorities v (random 1000000000)))
+
+      ;; Find local maxima (sequentially)
+      (define local-maxima (make-vector n #f))
+      (for ([v (in-range n)]
+            #:when (vector-ref active v))
+        (define v-priority (vector-ref priorities v))
+        (define is-max
+          (for/and ([u (in-vector (vector-ref graph v))])
+            (or (not (vector-ref active u))
+                (> v-priority (vector-ref priorities u)))))
+        (when is-max
+          (vector-set! local-maxima v #t)))
+
+      ;; Add local maxima to MIS and remove them and their neighbors
+      (define new-removed 0)
+      (for ([v (in-range n)]
+            #:when (vector-ref local-maxima v))
+        (vector-set! in-mis v #t)
+        (vector-set! active v #f)
+        (set! new-removed (add1 new-removed))
+        ;; Remove neighbors
+        (for ([u (in-vector (vector-ref graph v))])
+          (when (vector-ref active u)
+            (vector-set! active u #f)
+            (set! new-removed (add1 new-removed)))))
+
+      (set! active-count (- active-count new-removed))
+      (loop (add1 round))))
 
   ;; Return list of vertices in MIS
   (for/list ([v (in-range n)]
@@ -74,6 +107,9 @@
 
   (random-seed seed)
 
+  ;; Create thread pool for true OS-level parallelism
+  (define pool (make-parallel-thread-pool workers))
+
   ;; Iterate until all vertices are processed
   (let loop ([round 0])
     (when (> active-count 0)
@@ -83,7 +119,7 @@
             #:when (vector-ref active v))
         (vector-set! priorities v (random 1000000000)))
 
-      ;; Find local maxima in parallel
+      ;; Find local maxima in parallel - return lists instead of n-sized vectors
       (define chunk-size (quotient (+ n workers -1) workers))
       (define channels
         (for/list ([w (in-range workers)])
@@ -91,34 +127,25 @@
           (define end (min (+ start chunk-size) n))
           (and (< start end)
                (let ([ch (make-channel)])
-                 (thread
+                 (thread #:pool pool
                   (λ ()
-                    (define local-max (make-vector n #f))
-                    (for ([v (in-range start end)]
-                          #:when (vector-ref active v))
-                      (define v-priority (vector-ref priorities v))
-                      (define is-max
-                        (for/and ([u (in-vector (vector-ref graph v))])
-                          (or (not (vector-ref active u))
-                              (> v-priority (vector-ref priorities u)))))
-                      (when is-max
-                        (vector-set! local-max v #t)))
-                    (channel-put ch local-max)))
+                    (channel-put ch
+                      (for/list ([v (in-range start end)]
+                                 #:when (vector-ref active v)
+                                 #:when (let ([v-priority (vector-ref priorities v)])
+                                          (for/and ([u (in-vector (vector-ref graph v))])
+                                            (or (not (vector-ref active u))
+                                                (> v-priority (vector-ref priorities u))))))
+                        v))))
                  ch))))
 
-      ;; Collect results
-      (define local-maxima (make-vector n #f))
-      (for ([ch (in-list channels)])
-        (when ch
-          (define partial (channel-get ch))
-          (for ([v (in-range n)])
-            (when (vector-ref partial v)
-              (vector-set! local-maxima v #t)))))
+      ;; Collect results - just flatten the lists
+      (define local-maxima-list
+        (apply append (for/list ([ch (in-list channels)] #:when ch) (channel-get ch))))
 
       ;; Add local maxima to MIS and remove them and their neighbors
       (define new-removed 0)
-      (for ([v (in-range n)]
-            #:when (vector-ref local-maxima v))
+      (for ([v (in-list local-maxima-list)])
         (vector-set! in-mis v #t)
         (vector-set! active v #f)
         (set! new-removed (add1 new-removed))
@@ -130,6 +157,8 @@
 
       (set! active-count (- active-count new-removed))
       (loop (add1 round))))
+
+  (parallel-thread-pool-close pool)
 
   ;; Return list of vertices in MIS
   (for/list ([v (in-range n)]
@@ -160,19 +189,23 @@
 
   (and independent? maximal?))
 
-;; Generate random graph (Erdős-Rényi model)
+;; Generate random graph - O(n * avg-degree) instead of O(n^2)
 (define (generate-random-graph n avg-degree seed)
   (when (< n 2)
     (error 'generate-random-graph "need at least 2 vertices, got ~a" n))
   (random-seed seed)
-  (define p (/ avg-degree (sub1 n)))
   (define adj-lists (make-vector n null))
+  (define edge-set (make-hash))  ; Track edges to avoid duplicates
 
-  (for* ([u (in-range n)]
-         [v (in-range (add1 u) n)])
-    (when (< (random) p)
-      (vector-set! adj-lists u (cons v (vector-ref adj-lists u)))
-      (vector-set! adj-lists v (cons u (vector-ref adj-lists v)))))
+  ;; For each vertex, add approximately avg-degree edges
+  (for ([u (in-range n)])
+    (for ([_ (in-range avg-degree)])
+      (define v (random n))
+      (when (and (not (= u v))
+                 (not (hash-ref edge-set (cons (min u v) (max u v)) #f)))
+        (hash-set! edge-set (cons (min u v) (max u v)) #t)
+        (vector-set! adj-lists u (cons v (vector-ref adj-lists u)))
+        (vector-set! adj-lists v (cons u (vector-ref adj-lists v))))))
 
   ;; Convert to vector of vectors
   (for/vector ([neighbors (in-vector adj-lists)])
@@ -237,7 +270,7 @@
     (printf "Running sequential MIS...\n")
     (set! seq-result
       (run-benchmark
-       (λ () (mis-sequential graph))
+       (λ () (mis-sequential graph seed))
        #:name 'mis
        #:variant 'sequential
        #:repeat repeat

@@ -100,14 +100,17 @@
 
   (if (<= workers 1)
       (triangle-count-sequential graph)
-      (let* ([chunk-size (max 1 (ceiling (/ n (max 1 (min workers n)))))]
+      (let* ([pool (make-parallel-thread-pool workers)]
+             [chunk-size (max 1 (ceiling (/ n workers)))]
              [channels
               (for/list ([start (in-range 0 n chunk-size)])
                 (define end (min n (+ start chunk-size)))
                 (define ch (make-channel))
-                (thread (λ () (channel-put ch (count-range start end))))
-                ch)])
-        (apply + (map channel-get channels)))))
+                (thread #:pool pool (λ () (channel-put ch (count-range start end))))
+                ch)]
+             [result (apply + (map channel-get channels))])
+        (parallel-thread-pool-close pool)
+        result)))
 
 (module+ main
   (define n 1000)

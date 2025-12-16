@@ -67,6 +67,9 @@
 (define (merge-sort-parallel vec workers [threshold 1000])
   (define n (vector-length vec))
 
+  ;; Create thread pool for true OS-level parallelism
+  (define pool (make-parallel-thread-pool workers))
+
   (define (sorted-subvector v)
     (merge-sort-sequential v))
 
@@ -81,7 +84,7 @@
        (define right-vec (vector-copy v mid))
        (if (< depth 3)
            (let* ([ch (make-channel)]
-                  [_ (thread (λ () (channel-put ch (parallel-merge-sort left-vec (add1 depth)))))]
+                  [_ (thread #:pool pool (λ () (channel-put ch (parallel-merge-sort left-vec (add1 depth)))))]
                   [right-sorted (parallel-merge-sort right-vec (add1 depth))]
                   [left-sorted (channel-get ch)])
              (merge left-sorted right-sorted))
@@ -89,9 +92,12 @@
                  [right-sorted (parallel-merge-sort right-vec (add1 depth))])
              (merge left-sorted right-sorted)))]))
 
-  (if (<= workers 1)
-      (merge-sort-sequential vec)
-      (parallel-merge-sort vec 0)))
+  (define result
+    (if (<= workers 1)
+        (merge-sort-sequential vec)
+        (parallel-merge-sort vec 0)))
+  (parallel-thread-pool-close pool)
+  result)
 
 (module+ main
   (define n 1000000)

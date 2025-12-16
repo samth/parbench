@@ -31,9 +31,13 @@
   (values result carry))
 
 ;; Parallel bignum addition - compute sums in parallel, then propagate carries
+;; WARNING: Parallel version is typically SLOWER than sequential because
+;; carry propagation is inherently sequential. The parallel phase computes
+;; local sums, but merging requires sequential processing of all chunks.
 (define (bignum-add-parallel a b workers [chunk-size 1000])
   (define n (vector-length a))
   (define num-chunks (quotient (+ n chunk-size -1) chunk-size))
+  (define pool (make-parallel-thread-pool workers))
 
   ;; Phase 1: Compute local sums and carries in parallel
   (define channels
@@ -41,7 +45,7 @@
       (define ch (make-channel))
       (define start (* c chunk-size))
       (define end (min (+ start chunk-size) n))
-      (thread
+      (thread #:pool pool
        (λ ()
          (define local-result (make-vector (- end start) 0))
          (define carry 0)
@@ -54,6 +58,7 @@
       ch))
 
   (define chunks (map channel-get channels))
+  (parallel-thread-pool-close pool)
 
   ;; Phase 2: Sequential carry propagation between chunks
   (define result (make-vector n 0))

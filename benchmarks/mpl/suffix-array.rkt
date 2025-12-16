@@ -74,6 +74,9 @@
   ;; Create suffix array (initially just positions)
   (define sa (for/vector ([i (in-range n)]) i))
 
+  ;; Create thread pool for true OS-level parallelism
+  (define pool (make-parallel-thread-pool workers))
+
   (define (make-ranges len num-workers)
     (cond
       [(or (zero? len) (zero? num-workers)) '()]
@@ -91,7 +94,7 @@
         (for/list ([rg (in-list ranges)])
           (define start (car rg))
           (define end (cdr rg))
-          (thread
+          (thread #:pool pool
            (λ ()
              (for ([i (in-range start end)])
                (vector-set! secondary i
@@ -121,7 +124,7 @@
         (for/list ([rg (in-list diff-ranges)])
           (define start (car rg))
           (define end (cdr rg))
-          (thread
+          (thread #:pool pool
            (λ ()
              (for ([offset (in-range start end)])
                (define idx (add1 offset))
@@ -150,6 +153,7 @@
       (unless (= current-rank (sub1 n))
         (loop (* 2 k)))))
 
+  (parallel-thread-pool-close pool)
   sa)
 
 ;; Verify suffix array correctness

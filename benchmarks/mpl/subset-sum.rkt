@@ -23,69 +23,56 @@
     (for/vector ([i (in-range n)])
       (add1 (random max-value)))))  ; Values from 1 to max-value
 
-;; Sequential subset sum - dynamic programming approach
+;; Core backtracking search - used by both sequential and parallel
+;; Exponential O(2^n) time complexity
+(define (can-sum-backtrack bag n goal i current-sum)
+  (cond
+    [(= current-sum goal) #t]
+    [(or (> current-sum goal) (>= i n)) #f]
+    [else
+     (or (can-sum-backtrack bag n goal (add1 i) current-sum)  ; Don't take current
+         (can-sum-backtrack bag n goal (add1 i) (+ current-sum (vector-ref bag i))))]))  ; Take current
+
+;; Sequential subset sum - backtracking search
 ;; Returns #t if a subset summing to goal exists, #f otherwise
 (define (subset-sum-sequential bag goal)
   (define n (vector-length bag))
-  (define dp (make-hash))
-
-  ;; dp[i][sum] = true if subset of bag[0..i-1] sums to sum
-  (define (can-sum i current-sum)
-    (cond
-      [(= current-sum goal) #t]
-      [(or (< current-sum 0) (> current-sum goal) (>= i n)) #f]
-      [else
-       (define key (cons i current-sum))
-       (hash-ref! dp key
-                  (lambda ()
-                    (or (can-sum (add1 i) current-sum)  ; Don't take current
-                        (can-sum (add1 i) (+ current-sum (vector-ref bag i))))))]))  ; Take current
-
-  (can-sum 0 0))
+  (can-sum-backtrack bag n goal 0 0))
 
 ;; Parallel subset sum using work splitting
 ;; Parallelizes by exploring different branches of the search tree
+;; Both sequential and parallel use the same backtracking algorithm
 (define (subset-sum-parallel bag goal workers)
   (define n (vector-length bag))
 
-  ;; For smaller problems or deep recursion, use sequential
-  (define (can-sum-sequential bag-start i current-sum)
-    (cond
-      [(= current-sum goal) #t]
-      [(or (< current-sum 0) (> current-sum goal) (>= i n)) #f]
-      [else
-       (or (can-sum-sequential bag-start (add1 i) current-sum)
-           (can-sum-sequential bag-start (add1 i) (+ current-sum (vector-ref bag i))))]))
-
   ;; Try different initial splits in parallel
-  (define (try-parallel-splits)
-    ;; Try taking or not taking first few elements in parallel
-    (define splits (min 4 n))  ; Try up to 4 initial splits
-    (define task-count (expt 2 splits))
-    (define (evaluate-mask mask)
-      (define initial-sum
-        (for/sum ([i (in-range splits)])
-          (if (bitwise-bit-set? mask i)
-              (vector-ref bag i)
-              0)))
-      (if (= initial-sum goal)
-          #t
-          (can-sum-sequential bag splits initial-sum)))
+  ;; Split at first `splits` elements, creating 2^splits independent subproblems
+  (define splits (min 6 n))  ; Up to 64 tasks
+  (define task-count (expt 2 splits))
 
-    (if (<= workers 1)
-        (for/or ([mask (in-range task-count)])
-          (evaluate-mask mask))
-        (let ([channels
-               (for/list ([mask (in-range task-count)])
-                 (define ch (make-channel))
-                 (thread (λ () (channel-put ch (evaluate-mask mask))))
-                 ch)])
-          (for/or ([ch (in-list channels)])
-            (channel-get ch)))))
+  (define (evaluate-mask mask)
+    (define initial-sum
+      (for/sum ([i (in-range splits)])
+        (if (bitwise-bit-set? mask i)
+            (vector-ref bag i)
+            0)))
+    (if (= initial-sum goal)
+        #t
+        (can-sum-backtrack bag n goal splits initial-sum)))
 
-  (if (< n 4)
-      (subset-sum-sequential bag goal)
-      (try-parallel-splits)))
+  (if (<= workers 1)
+      (for/or ([mask (in-range task-count)])
+        (evaluate-mask mask))
+      (let* ([pool (make-parallel-thread-pool workers)]
+             [channels
+              (for/list ([mask (in-range task-count)])
+                (define ch (make-channel))
+                (thread #:pool pool (λ () (channel-put ch (evaluate-mask mask))))
+                ch)]
+             [result (for/or ([ch (in-list channels)])
+                       (channel-get ch))])
+        (parallel-thread-pool-close pool)
+        result)))
 
 (module+ main
   (define n 25)

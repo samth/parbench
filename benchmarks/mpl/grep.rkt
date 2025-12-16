@@ -55,15 +55,17 @@
 
   (if (<= workers 1)
       (grep-sequential lines pattern)
-      (let* ([effective-workers (max 1 (min workers n))]
+      (let* ([pool (make-parallel-thread-pool workers)]
+             [effective-workers (max 1 (min workers n))]
              [chunk-size (max 1 (ceiling (/ n effective-workers)))]
              [channels
               (for/list ([start (in-range 0 n chunk-size)])
                 (define end (min n (+ start chunk-size)))
                 (define ch (make-channel))
-                (thread (λ () (channel-put ch (process-range start end))))
+                (thread #:pool pool (λ () (channel-put ch (process-range start end))))
                 ch)]
              [results (map channel-get channels)])
+        (parallel-thread-pool-close pool)
         (sort (apply append results) <))))
 
 (module+ main

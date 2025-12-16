@@ -24,14 +24,17 @@
 ;; Parallel naive recursive Fibonacci with cutoff threshold
 ;; Below threshold, use sequential to avoid overhead
 (define (fib-parallel n workers [threshold 20])
+  (define pool (make-parallel-thread-pool workers))
   (define (fib-par n)
     (if (<= n threshold)
         (fib-sequential n)
         (let* ([ch (make-channel)]
-               [_ (thread (λ () (channel-put ch (fib-par (- n 1)))))]
+               [_ (thread #:pool pool (λ () (channel-put ch (fib-par (- n 1)))))]
                [f2 (fib-par (- n 2))])
           (+ (channel-get ch) f2))))
-  (fib-par n))
+  (define result (fib-par n))
+  (parallel-thread-pool-close pool)
+  result)
 
 ;; Known Fibonacci values for verification
 (define fib-known

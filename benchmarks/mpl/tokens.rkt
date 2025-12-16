@@ -81,16 +81,20 @@
     [(or (<= workers 1) (zero? len))
      (tokens-sequential text)]
     [else
-     (let* ([task-count (max 1 (min workers len))]
-            [chunk-size (max 1 (ceiling (/ len task-count)))]
-            [channels
-             (for/list ([start (in-range 0 len chunk-size)])
-               (define end (min len (+ start chunk-size)))
-               (define ch (make-channel))
-               (thread (λ () (channel-put ch (compute-token-chunk text start end len))))
-               ch)]
-            [chunk-token-lists (map channel-get channels)])
-       (apply append chunk-token-lists))]))
+     (define pool (make-parallel-thread-pool workers))
+     (define result
+       (let* ([task-count (max 1 (min workers len))]
+              [chunk-size (max 1 (ceiling (/ len task-count)))]
+              [channels
+               (for/list ([start (in-range 0 len chunk-size)])
+                 (define end (min len (+ start chunk-size)))
+                 (define ch (make-channel))
+                 (thread #:pool pool (λ () (channel-put ch (compute-token-chunk text start end len))))
+                 ch)]
+              [chunk-token-lists (map channel-get channels)])
+         (apply append chunk-token-lists)))
+     (parallel-thread-pool-close pool)
+     result]))
 
 (module+ main
   (define size 1000000)

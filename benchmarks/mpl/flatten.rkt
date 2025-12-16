@@ -32,6 +32,7 @@
 (define (flatten-parallel nested workers)
   (define n (vector-length nested))
   (define chunk-size (quotient (+ n workers -1) workers))
+  (define pool (make-parallel-thread-pool workers))
 
   ;; Phase 1: Compute lengths in parallel
   (define channels1
@@ -39,7 +40,7 @@
       (define ch (make-channel))
       (define start (* w chunk-size))
       (define end (min (+ start chunk-size) n))
-      (thread
+      (thread #:pool pool
        (λ ()
          (channel-put ch
            (for/vector ([i (in-range start end)])
@@ -57,19 +58,23 @@
 
   ;; Phase 3: Copy elements in parallel
   (define result (make-vector total))
-  (define threads2
+  (define channels2
     (for/list ([w (in-range workers)])
       (define start (* w chunk-size))
       (define end (min (+ start chunk-size) n))
-      (thread
+      (define ch (make-channel))
+      (thread #:pool pool
        (λ ()
          (for ([i (in-range start end)])
            (define v (vector-ref nested i))
            (define pos (vector-ref positions i))
            (for ([j (in-range (vector-length v))])
-             (vector-set! result (+ pos j) (vector-ref v j))))))))
+             (vector-set! result (+ pos j) (vector-ref v j))))
+         (channel-put ch #t)))
+      ch))
 
-  (for-each thread-wait threads2)
+  (for-each channel-get channels2)
+  (parallel-thread-pool-close pool)
 
   result)
 
