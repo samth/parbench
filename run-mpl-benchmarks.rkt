@@ -9,14 +9,41 @@
          "benchmarks/tools/analysis.rkt")
 
 ;; Benchmark configurations: (name args...)
-;; Tuned so sequential version takes ~500-700ms per iteration
+;; Tuned so sequential version takes ~500-600ms per iteration
 (define benchmark-configs
-  '(;; 5 benchmarks tuned for sequential time >0.5s
-    (histogram "--n" "200000000" "--repeat" "10")    ; ~600ms
-    (integer-sort "--n" "25000000" "--repeat" "10")  ; ~588ms
-    (bfs "--n" "75000" "--repeat" "10")              ; ~508ms
-    (convex-hull "--n" "1500000" "--repeat" "10")    ; ~450ms (n=2M had slow generation)
-    (mcss "--n" "150000000" "--repeat" "10")))       ; ~684ms (replaced mis - algorithm too fast)
+  '(;; 4 benchmarks with CAS-based parallel primitives, tuned for ~500ms sequential
+    (histogram "--n" "200000000" "--repeat" "10")    ; 515ms sequential
+    (integer-sort "--n" "50000000" "--range" "10000" "--repeat" "10")  ; 475ms seq, shows speedup with small range
+    (bfs "--n" "8000000" "--graph-type" "grid" "--repeat" "10")  ; 532ms sequential (grid graph avoids O(n²) gen)
+    (convex-hull "--n" "2500000" "--repeat" "10")    ; 566ms sequential
+    ;; 5 additional benchmarks with thread pool parallelism
+    (mis "--n" "1500000" "--repeat" "10")            ; 538ms sequential
+    (msf "--n" "120000" "--repeat" "10")             ; 546ms sequential
+    (suffix-array "--n" "600000" "--repeat" "10")    ; 772ms sequential
+    (primes "--n" "50000000" "--repeat" "10")        ; 214ms sequential
+    (merge-sort "--n" "5000000" "--repeat" "10")     ; 957ms sequential
+    ;; 5 more benchmarks with thread pool parallelism
+    (samplesort "--n" "2000000" "--repeat" "10")     ; 643ms sequential
+    (tokens "--size" "5000000" "--repeat" "10")      ; 748ms sequential
+    (nqueens "--n" "13" "--repeat" "10")             ; 1635ms sequential (excellent speedup)
+    (dedup "--n" "5000000" "--unique" "500000" "--repeat" "10")  ; 603ms sequential
+    (word-count "--size" "40000000" "--repeat" "10") ; 543ms sequential
+    ;; 5 more benchmarks with thread pool parallelism
+    (fib "--n" "42" "--threshold" "30" "--repeat" "10")  ; 771ms sequential (excellent speedup)
+    (shuffle "--n" "5000000" "--chunk-size" "500000" "--repeat" "10")  ; 564ms seq (parallel slower)
+    (grep "--lines" "2000000" "--repeat" "10")       ; 611ms sequential
+    (palindrome "--n" "500000000" "--repeat" "10")   ; 456ms sequential
+    (parens "--n" "150000000" "--repeat" "10")       ; 539ms sequential
+    ;; 5 more benchmarks (subset-sum shows excellent speedup, others memory-bound)
+    (mcss "--n" "100000000" "--repeat" "10")         ; 395ms seq (parallel slower - tuple alloc overhead)
+    (flatten "--n" "600000" "--avg-size" "100" "--repeat" "10")  ; 700ms seq (memory-bound)
+    (collect "--n" "15000000" "--repeat" "10")       ; 385ms seq (memory-bound)
+    (bignum-add "--n" "50000000" "--chunk-size" "5000000" "--repeat" "10")  ; 650ms seq (parallel slower - sequential carry)
+    (subset-sum "--n" "28" "--goal" "10000" "--max-value" "100" "--repeat" "10")  ; 600ms seq (5.8x speedup!)
+    ;; 3 final graph benchmarks with thread pool parallelism
+    (triangle-count "--n" "17000" "--edges" "1000000" "--repeat" "10")  ; 460ms seq (3.9x speedup)
+    (connectivity "--n" "2000000" "--edges" "8000000" "--repeat" "10")  ; 720ms seq (4.5x speedup)
+    (centrality "--n" "20000" "--edges" "100000" "--repeat" "10")))     ; 497ms seq (no speedup - BFS dominates)
 
 ;; Full list of all 27 benchmarks (uncomment when ready)
 #;(define benchmark-configs-full
