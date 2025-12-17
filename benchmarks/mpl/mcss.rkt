@@ -1,14 +1,11 @@
 #lang racket
 
-;; Port of mcss from MPL parallel-ml-bench
-;; Original: https://github.com/MPLLang/parallel-ml-bench/tree/main/mpl/bench/mcss
-;; Adapted for Racket parallel benchmarking
-;;
-;; Maximum Contiguous Subsequence Sum (MCSS) Problem:
-;; Find the maximum sum of any contiguous subarray in a given sequence.
-;; Classic dynamic programming problem, parallelized using scan operations.
+;; MCSS - Maximum Contiguous Subsequence Sum
+;; Optimized to match MPL's algorithm with reduced allocations
 
-(require "../common/cli.rkt"
+(require racket/flonum
+         racket/unsafe/ops
+         "../common/cli.rkt"
          "../common/logging.rkt"
          "../common/run.rkt")
 
@@ -21,84 +18,97 @@
   (define rng (make-pseudo-random-generator))
   (parameterize ([current-pseudo-random-generator rng])
     (random-seed seed)
-    (for/vector ([i (in-range n)])
-      (- (* 2.0 (random)) 1.0))))  ; Random values between -1 and 1
+    (define data (make-flvector n))
+    (for ([i (in-range n)])
+      (flvector-set! data i (fl- (fl* 2.0 (random)) 1.0)))
+    data))
 
-;; Sequential MCSS using Kadane's algorithm
-;; O(n) time complexity
+;; Sequential MCSS using Kadane's algorithm - O(n) time, O(1) space
 (define (mcss-sequential data)
-  (define n (vector-length data))
+  (define n (flvector-length data))
   (when (= n 0) (error 'mcss "empty data"))
   (let loop ([i 1]
-             [max-so-far (vector-ref data 0)]
-             [max-ending-here (vector-ref data 0)])
+             [max-so-far (flvector-ref data 0)]
+             [max-ending-here (flvector-ref data 0)])
     (if (>= i n)
         max-so-far
-        (let* ([new-max-ending (max (vector-ref data i)
-                                    (+ max-ending-here (vector-ref data i)))]
-               [new-max-so-far (max max-so-far new-max-ending)])
+        (let* ([v (flvector-ref data i)]
+               [new-max-ending (flmax v (fl+ max-ending-here v))]
+               [new-max-so-far (flmax max-so-far new-max-ending)])
           (loop (add1 i) new-max-so-far new-max-ending)))))
 
-;; Parallel MCSS using reduction with tuple (best, prefix, suffix, total)
-;; This properly handles subarrays crossing chunk boundaries
-;; WARNING: Parallel version is SLOWER than sequential due to allocation
-;; overhead from creating tuple vectors. Sequential Kadane's is O(n) with
-;; constant space, while parallel requires O(n) tuple allocations.
+;; Parallel MCSS using divide-and-conquer reduction
+;; Matches MPL's SeqBasis.reduce approach
+;; Tuple: (prefix, suffix, best, total)
+;; - prefix: max sum starting from left edge
+;; - suffix: max sum ending at right edge
+;; - best: max sum of any contiguous subarray
+;; - total: sum of all elements
+
+(define GRAIN 5000)
+
+;; Singleton tuple for single element
+(define-syntax-rule (make-singleton v)
+  (let ([vp (flmax v 0.0)])
+    (values vp vp vp v)))
+
+;; Combine two tuples - associative operation for parallel reduction
+;; (l1, r1, b1, t1) combine (l2, r2, b2, t2) =
+;;   (max(l1, t1+l2), max(r2, r1+t2), max(b1, b2, r1+l2), t1+t2)
+(define-syntax-rule (combine-tuples l1 r1 b1 t1 l2 r2 b2 t2)
+  (values (flmax l1 (fl+ t1 l2))
+          (flmax r2 (fl+ r1 t2))
+          (flmax (flmax b1 b2) (fl+ r1 l2))
+          (fl+ t1 t2)))
+
+;; Sequential reduction over a range - no allocation per element
+(define (reduce-range data lo hi)
+  (if (= (- hi lo) 1)
+      (make-singleton (flvector-ref data lo))
+      (let loop ([i (add1 lo)]
+                 [l (let ([v (flvector-ref data lo)]) (flmax v 0.0))]
+                 [r (let ([v (flvector-ref data lo)]) (flmax v 0.0))]
+                 [b (let ([v (flvector-ref data lo)]) (flmax v 0.0))]
+                 [t (flvector-ref data lo)])
+        (if (>= i hi)
+            (values l r b t)
+            (let ([v (flvector-ref data i)])
+              (let-values ([(l2 r2 b2 t2) (make-singleton v)])
+                (let-values ([(nl nr nb nt) (combine-tuples l r b t l2 r2 b2 t2)])
+                  (loop (add1 i) nl nr nb nt))))))))
+
+;; Parallel MCSS using divide-and-conquer
 (define (mcss-parallel data workers)
-  (define n (vector-length data))
+  (define n (flvector-length data))
   (when (= n 0) (error 'mcss "empty data"))
 
-  ;; Tuple representation: (best prefix suffix total)
-  ;; For single element x: (x, x, x, x)
-  (define (make-tuple x) (vector x x x x))
-  (define (tuple-best t) (vector-ref t 0))
-  (define (tuple-prefix t) (vector-ref t 1))
-  (define (tuple-suffix t) (vector-ref t 2))
-  (define (tuple-total t) (vector-ref t 3))
-
-  ;; Combine two tuples - associative operation for reduction
-  (define (combine t1 t2)
-    (define best1 (tuple-best t1))
-    (define prefix1 (tuple-prefix t1))
-    (define suffix1 (tuple-suffix t1))
-    (define total1 (tuple-total t1))
-    (define best2 (tuple-best t2))
-    (define prefix2 (tuple-prefix t2))
-    (define suffix2 (tuple-suffix t2))
-    (define total2 (tuple-total t2))
-    (vector (max best1 best2 (+ suffix1 prefix2))           ; best spans boundary
-            (max prefix1 (+ total1 prefix2))                ; prefix extends into right
-            (max suffix2 (+ suffix1 total2))                ; suffix extends into left
-            (+ total1 total2)))                             ; total sum
-
-  ;; Process a range and return combined tuple
-  (define (process-range start end)
-    (let loop ([i (add1 start)]
-               [acc (make-tuple (vector-ref data start))])
-      (if (>= i end)
-          acc
-          (loop (add1 i) (combine acc (make-tuple (vector-ref data i)))))))
-
   (define pool (make-parallel-thread-pool workers))
-  (define chunk-size (max 1 (quotient (+ n workers -1) workers)))
 
-  (define channels
-    (for/list ([start (in-range 0 n chunk-size)])
-      (define end (min n (+ start chunk-size)))
-      (define ch (make-channel))
-      (thread #:pool pool (λ () (channel-put ch (process-range start end))))
-      ch))
+  ;; Divide-and-conquer parallel reduction
+  (define (par-reduce lo hi)
+    (cond
+      [(<= (- hi lo) GRAIN)
+       ;; Base case: sequential reduction
+       (reduce-range data lo hi)]
+      [else
+       ;; Parallel case: split and combine
+       (define mid (+ lo (quotient (- hi lo) 2)))
+       (define ch (make-channel))
+       (thread #:pool pool
+        (lambda ()
+          (let-values ([(l r b t) (par-reduce lo mid)])
+            (channel-put ch (vector l r b t)))))
+       (define-values (l2 r2 b2 t2) (par-reduce mid hi))
+       (define left-result (channel-get ch))
+       (define l1 (vector-ref left-result 0))
+       (define r1 (vector-ref left-result 1))
+       (define b1 (vector-ref left-result 2))
+       (define t1 (vector-ref left-result 3))
+       (combine-tuples l1 r1 b1 t1 l2 r2 b2 t2)]))
 
-  (define partial-results (map channel-get channels))
+  (define-values (l r b t) (par-reduce 0 n))
   (parallel-thread-pool-close pool)
-
-  ;; Reduce partial results
-  (define final-tuple
-    (for/fold ([acc (first partial-results)])
-              ([t (in-list (rest partial-results))])
-      (combine acc t)))
-
-  (tuple-best final-tuple))
+  b)
 
 (module+ main
   (define n 1000000)
@@ -107,7 +117,6 @@
   (define repeat 1)
   (define log-path "")
   (define skip-sequential #f)
-
 
   (command-line
    #:program "mcss"
