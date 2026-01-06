@@ -5,7 +5,7 @@ This document provides guidance for AI coding assistants (Claude, GitHub Copilot
 ## Repository Overview
 
 This is a **comprehensive parallel benchmarking suite** for Racket, containing benchmarks across 3 categories:
-- **Racket benchmarks** (4): bmbench, bmbench_improved, richards, rows1b
+- **Racket benchmarks** (3): bmbench, richards, rows1b
 - **Shootout benchmarks** (8): spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, fasta, regex-dna, k-nucleotide
 - **MPL benchmarks** (27): histogram, integer-sort, bfs, mis, msf, suffix-array, convex-hull, plus 20 additional benchmarks
 
@@ -288,11 +288,12 @@ racket -c benchmarks/nas/ep.rkt
 
 ## Benchmark Counts by Suite
 
-- **Racket:** 4 benchmarks (bmbench, bmbench_improved, richards, rows1b)
+- **Racket:** 3 benchmarks (bmbench, richards, rows1b)
 - **Shootout:** 8 benchmarks (spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, fasta, regex-dna, k-nucleotide)
-- **NAS:** 3 benchmarks (ep, is, cg) + 2 planned (mg, ft)
-- **MPL:** 7 benchmarks (histogram, integer-sort, bfs, mis, msf, suffix-array, convex-hull)
-- **Total:** 23 implemented, 2 planned
+- **MPL:** 27 benchmarks (graph algorithms, sorting, text processing, numeric computations)
+- **Total:** 38 active benchmarks
+
+Note: NAS benchmarks exist in `benchmarks/nas/` but are not part of the active suite.
 
 ## Version History
 

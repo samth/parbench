@@ -5,7 +5,7 @@ A comprehensive, reproducible benchmarking harness for evaluating parallel perfo
 ## Overview
 
 This repository provides:
-- **Racket Benchmarks** (4): Boyer-Moore, Richards, and synthetic workloads with sequential and parallel (futures/threads) variants
+- **Racket Benchmarks** (3): Boyer-Moore, Richards, and synthetic workloads with sequential and parallel (futures/threads) variants
 - **Shootout Benchmarks** (8): Classic language benchmark game workloads adapted for parallel execution (spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, fasta, regex-dna, k-nucleotide)
 - **MPL Parallel Benchmarks** (27): Racket re-implementations of MPL benchmark algorithms covering graph algorithms, sorting, numeric computations, and more
 - **Analysis Tools**: Log aggregation, statistical summaries, PNG plotting, and interactive HTML visualization dashboard
@@ -127,7 +127,7 @@ tests/              # RackUnit test suite
 ## Benchmark Categories
 
 ### Racket Benchmarks
-- **bmbench.rkt** / **bmbench_improved.rkt** - Boyer-Moore majority voting with configurable parallelism
+- **bmbench.rkt** - Boyer-Moore majority voting with parallel tree-merge reduction
 - **richards.rkt** - OS simulator benchmark adapted from Martin Richards' original
 - **rows1b.rkt** - Synthetic 1-billion-row data processing workload
 
@@ -186,7 +186,7 @@ tests/              # RackUnit test suite
 This is an active development project with most core features complete:
 - ✅ Phase 1-2: Core infrastructure and logging (complete)
 - ✅ Phase 3: Shootout benchmarks integration (8 benchmarks complete)
-- ✅ Phase 4: Racket benchmarks (4 benchmarks complete)
+- ✅ Phase 4: Racket benchmarks (3 benchmarks complete)
 - ✅ Phase 5: MPL benchmarks (27 benchmarks complete)
 - ✅ Phase 6: Unified CLI orchestration (complete with config file support)
 - ✅ Phase 7: Visualization and plotting tools (complete with interactive HTML dashboard)

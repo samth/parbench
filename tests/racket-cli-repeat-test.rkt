@@ -30,17 +30,6 @@
         "--target-work" "64"
         "--repeat" "2")))))
 
-(test-case "bmbench-improved accepts repeat override"
-  (check-not-exn
-   (λ ()
-     (run-benchmark-main
-      "benchmarks/racket/bmbench_improved.rkt"
-      '("--sizes" "64"
-        "--workers" "1"
-        "--target-work" "64"
-        "--threshold" "16"
-        "--repeat" "2")))))
-
 (test-case "richards accepts repeat override"
   (check-not-exn
    (λ ()

@@ -2,7 +2,7 @@
 
 This repository provides a comprehensive parallel benchmarking suite for Racket with three main benchmark categories:
 
-- **Racket Benchmarks** (4): Boyer-Moore majority voting, Richards device scheduler, 1 billion row challenge
+- **Racket Benchmarks** (3): Boyer-Moore majority voting, Richards device scheduler, 1 billion row challenge
 - **Shootout Benchmarks** (8): Classic language benchmark game workloads adapted for parallel execution
 - **MPL Benchmarks** (27): Graph algorithms, sorting, text processing, and numeric computations from the MPL parallel benchmark suite
 
@@ -19,8 +19,7 @@ benchmarks/
     logging.rkt   ; S-expression log writer
     run.rkt       ; GC-aware timing + verification helper
   racket/
-    bmbench.rkt           ; original Boyer–Moore benchmark
-    bmbench_improved.rkt  ; chunked futures variant
+    bmbench.rkt           ; Boyer–Moore majority with tree-merge reduction
     richards.rkt          ; futures-enabled Richards benchmark
     rows1b.rkt            ; 1B rows synthetic workload
   shootout/
@@ -53,21 +52,12 @@ benchmarks/
 Each benchmark accepts a consistent set of CLI switches and will emit one `(benchmark ...)` S-expression per timed run. Examples:
 
 ```bash
-# Baseline Boyer–Moore with custom sizes and workers
+# Boyer–Moore majority with parallel tree-merge reduction
 racket benchmarks/racket/bmbench.rkt \
-  --sizes 20000,80000 \
-  --workers 2,4 \
-  --target-work 400000 \
+  --n 1000000 \
+  --workers 4 \
   --probability 0.7 \
   --log logs/bmbench.sexp
-
-# Improved Boyer–Moore with manual chunk tuning
-racket benchmarks/racket/bmbench_improved.rkt \
-  --sizes 20000 \
-  --threshold 30000 \
-  --chunk-size 50000 \
-  --chunk-multiplier 3 \
-  --log logs/bmbench-improved.sexp
 
 # Richards benchmark with parallel sweep
 racket benchmarks/racket/richards.rkt \
@@ -333,9 +323,9 @@ Options:
 
 | Suite | Count | Description |
 |-------|-------|-------------|
-| Racket | 4 | Boyer-Moore, Richards, rows1b |
+| Racket | 3 | Boyer-Moore, Richards, rows1b |
 | Shootout | 8 | Language benchmark game ports |
 | MPL | 27 | Graph, sorting, text, numeric algorithms |
-| **Total** | **39** | Active benchmarks |
+| **Total** | **38** | Active benchmarks |
 
-All 39 benchmarks demonstrate meaningful parallel speedup (>1.5x at 8 workers).
+All 38 benchmarks demonstrate meaningful parallel speedup (>1.5x at 8 workers).

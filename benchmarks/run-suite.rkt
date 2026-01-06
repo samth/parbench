@@ -12,8 +12,7 @@
 
 ;; Suite definitions mapping suite names to benchmark configurations
 (define racket-benchmarks
-  '((bmbench "racket/bmbench.rkt" (--sizes "20000" --workers "4" --repeat "3"))
-    (bmbench-improved "racket/bmbench_improved.rkt" (--sizes "20000" --workers "4" --repeat "3"))
+  '((bmbench "racket/bmbench.rkt" (--n "1000000" --workers "4" --repeat "3"))
     (richards "racket/richards.rkt" (--iterations "5" --workers "4" --repeat "3"))
     (rows1b "racket/rows1b.rkt" (--rows "1000000" --workers "4" --chunk-size "100000" --repeat "3"))))
 
