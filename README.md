@@ -53,10 +53,6 @@ racket benchmarks/racket/bmbench.rkt --sizes 10000 --workers 4 --log logs/test.s
 cat logs/test.sexp
 ```
 
-### Optional toolchains
-
-If you want to cross-check the NAS kernels against the reference Fortran code, install a Fortran compiler (e.g., `gfortran`) with your usual package manager.
-
 ### Troubleshooting
 
 **Issue:** Benchmarks run slowly or don't show speedup
@@ -113,7 +109,7 @@ benchmarks/
   common/           # Shared CLI, logging, and harness modules
   racket/           # Native Racket benchmarks (Boyer-Moore, Richards, rows1b)
   shootout/         # Computer Language Benchmarks Game ports
-  nas/              # NAS Parallel Benchmarks runner infrastructure
+  mpl/              # MPL parallel algorithm re-implementations
   tools/            # Analysis, summarization, and plotting utilities
 tests/              # RackUnit test suite
 ```
@@ -191,8 +187,6 @@ This is an active development project with most core features complete:
 - ✅ Phase 6: Unified CLI orchestration (complete with config file support)
 - ✅ Phase 7: Visualization and plotting tools (complete with interactive HTML dashboard)
 - ⏳ CI integration (planned)
-
-**Note:** NAS benchmarks (EP, IS, CG) exist in `benchmarks/nas/` but are not part of the active benchmark suite.
 
 See [PLAN.md](PLAN.md) for detailed roadmap and progress tracking.
 

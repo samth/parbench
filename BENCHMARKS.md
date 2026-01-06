@@ -8,8 +8,6 @@ This repository provides a comprehensive parallel benchmarking suite for Racket 
 
 All benchmarks share a consistent command-line interface and S-expression logging format.
 
-**Note:** NAS benchmarks (EP, IS, CG) exist in `benchmarks/nas/` but are not part of the active benchmark suite and are excluded from the default `--suite all` runs.
-
 ## Layout
 
 ```
@@ -36,10 +34,6 @@ benchmarks/
     histogram.rkt         ; parallel histogram
     integer-sort.rkt      ; parallel counting sort
     ... (27 benchmarks total)
-  nas/                    ; (not part of active suite)
-    ep.rkt                ; Embarrassingly Parallel kernel
-    is.rkt                ; Integer Sort
-    cg.rkt                ; Conjugate Gradient
   tools/
     analysis.rkt          ; shared log aggregation helpers
     summarize-results.rkt ; S-expression log aggregator
@@ -312,7 +306,7 @@ Key features:
 - **Detailed Table**: Complete data with all metrics and standard deviations
 
 Options:
-- `--suite`, `-s`: Suite to run (racket, shootout, nas, mpl, or all)
+- `--suite`, `-s`: Suite to run (racket, shootout, mpl, toy, or all)
 - `--config`, `-c`: Configuration file (quick.sexp, standard.sexp, stress.sexp)
 - `--log-dir`, `-l`: Directory for log files (default: logs)
 - `--output`, `-o`: Output HTML file (default: benchmark-results.html)

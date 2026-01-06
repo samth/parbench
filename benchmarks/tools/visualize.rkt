@@ -127,7 +127,7 @@
    (command-line
     #:program "visualize.rkt"
     #:once-each
-    [("--suite" "-s") suite "Suite to run: racket, shootout, nas, mpl, toy, or all"
+    [("--suite" "-s") suite "Suite to run: racket, shootout, mpl, toy, or all"
      (set! suite-names (cons suite suite-names))]
     [("--config" "-c") path "Configuration file (S-expression)"
      (set! config-path path)]

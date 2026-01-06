@@ -9,8 +9,6 @@ This is a **comprehensive parallel benchmarking suite** for Racket, containing b
 - **Shootout benchmarks** (8): spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, fasta, regex-dna, k-nucleotide
 - **MPL benchmarks** (27): histogram, integer-sort, bfs, mis, msf, suffix-array, convex-hull, plus 20 additional benchmarks
 
-Note: NAS benchmarks (ep, is, cg) exist in `benchmarks/nas/` but are not part of the active benchmark suite.
-
 ## Architecture & Key Modules
 
 ### Core Infrastructure (`benchmarks/common/`)
@@ -42,7 +40,7 @@ All benchmarks emit S-expressions with this structure:
 ### Suite Runner (`benchmarks/run-suite.rkt`)
 Unified CLI for running multiple benchmarks:
 ```bash
-racket benchmarks/run-suite.rkt --suite racket|shootout|nas|mpl|all --config config/quick.sexp
+racket benchmarks/run-suite.rkt --suite racket|shootout|mpl|all --config config/quick.sexp
 ```
 
 ## Development Guidelines
@@ -54,7 +52,6 @@ When adding a new benchmark, follow this checklist:
 1. **Choose the appropriate directory:**
    - `benchmarks/racket/` - Native Racket algorithms
    - `benchmarks/shootout/` - Computer Language Benchmarks Game ports
-   - `benchmarks/nas/` - NAS Parallel Benchmark implementations
    - `benchmarks/mpl/` - MPL benchmark re-implementations
 
 2. **Required structure:**
@@ -85,7 +82,6 @@ When adding a new benchmark, follow this checklist:
 
 4. **Update documentation:**
    - Add usage examples to `BENCHMARKS.md`
-   - Update suite-specific README (e.g., `benchmarks/nas/README.md`)
    - List new benchmark in main `README.md`
 
 5. **Integrate with suite runner:**
@@ -115,14 +111,14 @@ When adding a new benchmark, follow this checklist:
 
 1. **Correctness tests:** Sequential vs parallel output equivalence
 2. **Smoke tests:** Small problem sizes (< 1s runtime)
-3. **Verification tests:** Known outputs or checksums (especially NAS/MPL)
+3. **Verification tests:** Known outputs or checksums (especially MPL)
 4. **Scaling tests:** Verify speedup with increased workers
 5. **Regression tests:** Compare against historical performance data
 
 Run tests with:
 ```bash
 raco test tests/                    # All tests
-raco test tests/nas/ep-test.rkt     # Specific test
+raco test tests/bmbench-test.rkt    # Specific test
 ```
 
 ## Common Patterns
@@ -170,14 +166,6 @@ raco test tests/nas/ep-test.rkt     # Specific test
 ```
 
 ## Benchmark-Specific Guidance
-
-### NAS Benchmarks
-- **Problem classes:** S (small), W (workstation), A/B/C (increasing)
-- **Verification:** Compare against known checksums from NPB specification
-- **Implementation notes:**
-  - EP: Partition random number generation across workers
-  - IS: Use parallel bucket counting then merge
-  - CG: Parallelize sparse matrix-vector multiply
 
 ### MPL Benchmarks
 - **Graph algorithms:** Support both synthetic generation and file input
@@ -232,16 +220,11 @@ raco test tests/nas/ep-test.rkt     # Specific test
 │   ├── common/              # Shared infrastructure
 │   ├── racket/              # Native Racket benchmarks
 │   ├── shootout/            # Shootout ports
-│   ├── nas/                 # NAS implementations
 │   ├── mpl/                 # MPL re-implementations
 │   ├── tools/               # Analysis and visualization
 │   ├── config/              # Configuration files
 │   └── run-suite.rkt        # Unified CLI
 └── tests/                   # RackUnit test suite
-    ├── racket/
-    ├── shootout/
-    ├── nas/
-    └── mpl/
 ```
 
 ## Important Notes
@@ -255,7 +238,7 @@ raco test tests/nas/ep-test.rkt     # Specific test
 - ❌ Don't commit benchmarks with known correctness issues
 
 ### When to Ask for Review
-- Adding new benchmark categories beyond racket/shootout/nas/mpl
+- Adding new benchmark categories beyond racket/shootout/mpl
 - Modifying shared infrastructure in `benchmarks/common/`
 - Changing log format (breaks existing analysis tools)
 - Adding external dependencies beyond standard Racket distribution
@@ -265,7 +248,7 @@ raco test tests/nas/ep-test.rkt     # Specific test
 
 ```bash
 # Run single benchmark
-racket benchmarks/nas/ep.rkt --class S --workers 4 --repeat 3
+racket benchmarks/mpl/fib.rkt --n 40 --workers 4 --repeat 3
 
 # Run suite with config
 racket benchmarks/run-suite.rkt --suite all --config config/quick.sexp
@@ -283,7 +266,7 @@ racket benchmarks/tools/visualize.rkt --suite all --config config/quick.sexp
 raco test tests/
 
 # Check benchmark without running
-racket -c benchmarks/nas/ep.rkt
+racket -c benchmarks/mpl/fib.rkt
 ```
 
 ## Benchmark Counts by Suite
@@ -293,19 +276,16 @@ racket -c benchmarks/nas/ep.rkt
 - **MPL:** 27 benchmarks (graph algorithms, sorting, text processing, numeric computations)
 - **Total:** 38 active benchmarks
 
-Note: NAS benchmarks exist in `benchmarks/nas/` but are not part of the active suite.
-
 ## Version History
 
 - **2025-10-16:** Comprehensive suite with all major benchmarks complete
-- **2025-10-15:** Integrated NAS and MPL benchmarks, expanded shootout suite
+- **2025-10-15:** Integrated MPL benchmarks, expanded shootout suite
 - **2025-10-07:** Added visualization dashboard
 - **2025-10-02:** Core infrastructure and initial benchmarks
 
 ## References
 
 - [Racket Documentation](https://docs.racket-lang.org/)
-- [NAS Parallel Benchmarks](https://www.nas.nasa.gov/software/npb.html)
 - [MPL Parallel ML Benchmarks](https://github.com/MPLLang/parallel-ml-bench)
 - [Computer Language Benchmarks Game](https://benchmarksgame-team.pages.debian.net/benchmarksgame/)
 - [PBBS Benchmark Suite](https://cmuparlay.github.io/pbbsbench/)

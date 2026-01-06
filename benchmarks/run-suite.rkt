@@ -26,9 +26,6 @@
     (regex-dna "shootout/regex-dna.rkt" (--n "100000" --workers "4" --repeat "3"))
     (k-nucleotide "shootout/k-nucleotide.rkt" (--n "100000" --workers "4" --repeat "3"))))
 
-(define nas-benchmarks
-  '((nas-ep "nas/ep.rkt" (--class "S" --workers "4" --repeat "3"))))
-
 (define fib-scaling-benchmarks
   (for/list ([w (in-range 1 9)])
     (list
@@ -72,7 +69,6 @@
   (case (string->symbol name)
     [(racket) racket-benchmarks]
     [(shootout) shootout-benchmarks]
-    [(nas) nas-benchmarks]
     [(fib-scaling) fib-scaling-benchmarks]
     [(merge-sort-scaling) merge-sort-scaling-benchmarks]
     [(mpl) mpl-benchmarks]
@@ -225,7 +221,7 @@
    (command-line
     #:program "run-suite.rkt"
     #:once-each
-    [("--suite" "-s") suite "Suite to run: racket, shootout, nas, mpl, toy, or all"
+    [("--suite" "-s") suite "Suite to run: racket, shootout, mpl, toy, or all"
      (set! suites (cons suite suites))]
     [("--config" "-c") path "Configuration file (S-expression)"
      (set! config-path path)]

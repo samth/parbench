@@ -19,9 +19,8 @@ This document tracks the development history of the parallel benchmark suite.
 - ✅ Visualization tools: Analysis library, summarizer, PNG plotting, interactive HTML dashboard
 - ✅ Test coverage: 42 test files validating correctness
 
-**Out of Scope:**
-- NAS benchmarks exist in `benchmarks/nas/` but are not part of the active suite
-- CI integration (future work)
+**Future Work:**
+- CI integration with GitHub Actions
 
 ## Original Goals
 - Build a reproducible, extensible benchmarking harness for evaluating Racket parallelism
