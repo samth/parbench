@@ -209,4 +209,4 @@ See [AGENTS.md](AGENTS.md) for detailed contribution guidelines.
 
 ## License
 
-See individual benchmark files for licensing information. Original benchmarks from external sources retain their original licenses.
+This software is licensed under the Apache License, Version 2.0 or the MIT License, at your option. See [LICENSE](LICENSE) for details.
