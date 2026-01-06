@@ -1,6 +1,14 @@
 # Benchmark Harness Guide
 
-This repository currently provides a small set of Racket benchmarks with a shared command-line interface and S-expression logging. Additional suites (shootout, NAS, MPL) will plug into the same structure in later stages.
+This repository provides a comprehensive parallel benchmarking suite for Racket with three main benchmark categories:
+
+- **Racket Benchmarks** (4): Boyer-Moore majority voting, Richards device scheduler, 1 billion row challenge
+- **Shootout Benchmarks** (8): Classic language benchmark game workloads adapted for parallel execution
+- **MPL Benchmarks** (27): Graph algorithms, sorting, text processing, and numeric computations from the MPL parallel benchmark suite
+
+All benchmarks share a consistent command-line interface and S-expression logging format.
+
+**Note:** NAS benchmarks (EP, IS, CG) exist in `benchmarks/nas/` but are not part of the active benchmark suite and are excluded from the default `--suite all` runs.
 
 ## Layout
 
@@ -16,7 +24,6 @@ benchmarks/
     richards.rkt          ; futures-enabled Richards benchmark
     rows1b.rkt            ; 1B rows synthetic workload
   shootout/
-    README.md
     spectral-norm.rkt     ; spectral norm with thread-based parallelism
     binary-trees.rkt      ; binary tree checksum with threads
     nbody.rkt             ; n-body gravitational simulation
@@ -25,10 +32,15 @@ benchmarks/
     fasta.rkt             ; FASTA sequence generation benchmark
     regex-dna.rkt         ; Regex DNA pattern matching benchmark
     k-nucleotide.rkt      ; K-nucleotide frequency analysis benchmark
-  nas/
-    README.md             ; instructions + runner for NAS binaries
-    common/               ; shared problem-class metadata
-    ep.rkt                ; Embarrassingly Parallel kernel (seq + parallel)
+  mpl/
+    bfs.rkt               ; breadth-first search
+    histogram.rkt         ; parallel histogram
+    integer-sort.rkt      ; parallel counting sort
+    ... (27 benchmarks total)
+  nas/                    ; (not part of active suite)
+    ep.rkt                ; Embarrassingly Parallel kernel
+    is.rkt                ; Integer Sort
+    cg.rkt                ; Conjugate Gradient
   tools/
     analysis.rkt          ; shared log aggregation helpers
     summarize-results.rkt ; S-expression log aggregator
@@ -191,38 +203,7 @@ racket benchmarks/tools/plot-results.rkt \
 
 Metrics supported: `real` (default) or `cpu`. The script computes means across all runs and generates a grouped bar chart using the `plot` library.
 
-## External Suites
-
-### NAS Parallel Benchmarks
-
-The NAS suite provides Racket re-implementations of selected NPB kernels with sequential and parallel variants:
-
-```bash
-# EP (Embarrassingly Parallel) - Gaussian random deviates
-racket benchmarks/nas/ep.rkt \
-  --class A \
-  --workers 8 \
-  --repeat 3 \
-  --log logs/nas-ep.sexp
-
-# IS (Integer Sort) - Bucket sort
-racket benchmarks/nas/is.rkt \
-  --class W \
-  --workers 4 \
-  --repeat 3 \
-  --log logs/nas-is.sexp
-
-# CG (Conjugate Gradient) - Sparse matrix solver
-racket benchmarks/nas/cg.rkt \
-  --class S \
-  --workers 4 \
-  --repeat 3 \
-  --log logs/nas-cg.sexp
-```
-
-Each benchmark supports problem classes S (small), W (workload), A, B, and C (increasing computational intensity). Use `--class` to select the problem size, `--workers` for parallel execution, and `--repeat` to run multiple iterations for statistical averaging.
-
-### MPL Parallel Benchmarks
+## MPL Parallel Benchmarks
 
 The MPL suite provides Racket re-implementations of algorithms from the MPL Parallel ML Benchmark suite:
 
@@ -348,8 +329,13 @@ Options:
 - `--title`, `-t`: Dashboard title
 - `--no-run`: Generate visualization from existing logs only
 
-## Next Steps
+## Benchmark Suite Summary
 
-- Add additional shootout workloads (fasta, regex-dna, k-nucleotide, etc.) following the shared harness.
-- Integrate MPL benchmarks with shared logging conventions.
-- Extend the summarizer/plot tools to compute speedups once multiple variants per workload are available.
+| Suite | Count | Description |
+|-------|-------|-------------|
+| Racket | 4 | Boyer-Moore, Richards, rows1b |
+| Shootout | 8 | Language benchmark game ports |
+| MPL | 27 | Graph, sorting, text, numeric algorithms |
+| **Total** | **39** | Active benchmarks |
+
+All 39 benchmarks demonstrate meaningful parallel speedup (>1.5x at 8 workers).

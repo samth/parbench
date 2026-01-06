@@ -78,7 +78,7 @@
     [(merge-sort-scaling) merge-sort-scaling-benchmarks]
     [(mpl) mpl-benchmarks]
     [(toy) toy-benchmarks]
-    [(all) (append racket-benchmarks shootout-benchmarks nas-benchmarks mpl-benchmarks)]
+    [(all) (append racket-benchmarks shootout-benchmarks mpl-benchmarks)]
     [else (error 'run-suite "unknown suite: ~a" name)]))
 
 ;; Load configuration from S-expression file

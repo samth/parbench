@@ -5,10 +5,9 @@ A comprehensive, reproducible benchmarking harness for evaluating parallel perfo
 ## Overview
 
 This repository provides:
-- **Racket Benchmarks**: Boyer-Moore, Richards, and synthetic workloads with sequential and parallel (futures/threads) variants
-- **Shootout Benchmarks**: 8 classic language benchmark game workloads adapted for parallel execution (spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, fasta, regex-dna, k-nucleotide)
-- **NAS Parallel Benchmarks**: 3 Racket re-implementations of NPB kernels (EP, IS, CG) with sequential and parallel variants
-- **MPL Parallel Benchmarks**: 7 Racket re-implementations of MPL benchmark algorithms (histogram, integer-sort, bfs, mis, msf, suffix-array, convex-hull)
+- **Racket Benchmarks** (4): Boyer-Moore, Richards, and synthetic workloads with sequential and parallel (futures/threads) variants
+- **Shootout Benchmarks** (8): Classic language benchmark game workloads adapted for parallel execution (spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, fasta, regex-dna, k-nucleotide)
+- **MPL Parallel Benchmarks** (27): Racket re-implementations of MPL benchmark algorithms covering graph algorithms, sorting, numeric computations, and more
 - **Analysis Tools**: Log aggregation, statistical summaries, PNG plotting, and interactive HTML visualization dashboard
 
 All benchmarks share a common infrastructure:
@@ -142,31 +141,58 @@ tests/              # RackUnit test suite
 - **regex-dna.rkt** - Regex pattern matching on DNA sequences
 - **k-nucleotide.rkt** - K-mer frequency analysis
 
-### NAS Parallel Benchmarks
-- **ep.rkt** - Embarrassingly Parallel (Gaussian random deviates)
-- **is.rkt** - Integer Sort (bucket sort)
-- **cg.rkt** - Conjugate Gradient (sparse matrix solver)
-
 ### MPL Parallel Benchmarks
-- **histogram.rkt** - Parallel histogram with bucketed counting
-- **integer-sort.rkt** - Parallel counting sort
-- **bfs.rkt** - Breadth-first search (level-synchronous)
+
+**Graph Algorithms:**
+- **bfs.rkt** - Breadth-first search (direction-optimizing)
 - **mis.rkt** - Maximal Independent Set (Luby's algorithm)
 - **msf.rkt** - Minimum Spanning Forest (Borůvka's algorithm)
+- **connectivity.rkt** - Connected components
+- **triangle-count.rkt** - Triangle counting
+- **centrality.rkt** - Betweenness centrality (Brandes' algorithm)
+
+**Sorting & Searching:**
+- **integer-sort.rkt** - Parallel counting sort
+- **merge-sort.rkt** - Parallel merge sort
+- **samplesort.rkt** - Parallel sample sort
 - **suffix-array.rkt** - Suffix array construction (prefix-doubling)
+
+**Geometry:**
 - **convex-hull.rkt** - Convex hull (parallel QuickHull)
+
+**Numeric & Data Processing:**
+- **histogram.rkt** - Parallel histogram with bucketed counting
+- **primes.rkt** - Parallel prime sieve
+- **fib.rkt** - Parallel Fibonacci
+- **nqueens.rkt** - N-Queens solver
+
+**Text & Sequence Processing:**
+- **tokens.rkt** - Parallel tokenization
+- **word-count.rkt** - Parallel word frequency counting
+- **grep.rkt** - Parallel pattern search
+- **dedup.rkt** - Parallel deduplication
+- **palindrome.rkt** - Palindrome detection
+
+**Collection Operations:**
+- **mcss.rkt** - Maximum contiguous subsequence sum
+- **flatten.rkt** - Parallel array flattening
+- **collect.rkt** - Parallel filter/collect
+- **bignum-add.rkt** - Big number addition
+- **subset-sum.rkt** - Subset sum solver
+- **shuffle.rkt** - Parallel Fisher-Yates shuffle
 
 ## Development Status
 
 This is an active development project with most core features complete:
 - ✅ Phase 1-2: Core infrastructure and logging (complete)
 - ✅ Phase 3: Shootout benchmarks integration (8 benchmarks complete)
-- ✅ Phase 4: NAS benchmarks (3 kernels: EP, IS, CG complete)
-- ✅ Phase 5: MPL benchmarks (7 benchmarks complete)
+- ✅ Phase 4: Racket benchmarks (4 benchmarks complete)
+- ✅ Phase 5: MPL benchmarks (27 benchmarks complete)
 - ✅ Phase 6: Unified CLI orchestration (complete with config file support)
-- ✅ Phase 8: Visualization and plotting tools (complete with interactive HTML dashboard)
-- ⏳ Phase 7: CI integration (planned)
-- ⏳ Additional NAS kernels (MG, FT) and MPL benchmarks (stretch goals)
+- ✅ Phase 7: Visualization and plotting tools (complete with interactive HTML dashboard)
+- ⏳ CI integration (planned)
+
+**Note:** NAS benchmarks (EP, IS, CG) exist in `benchmarks/nas/` but are not part of the active benchmark suite.
 
 See [PLAN.md](PLAN.md) for detailed roadmap and progress tracking.
 
