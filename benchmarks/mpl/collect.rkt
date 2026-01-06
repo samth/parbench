@@ -4,9 +4,15 @@
 ;; Original: https://github.com/MPLLang/parallel-ml-bench/tree/main/mpl/bench/collect
 ;; Adapted for Racket parallel benchmarking
 ;;
-;; Collect/filter operations - tests parallel filtering and compaction patterns
+;; MPL's SeqBasis.filter algorithm:
+;; 1. Phase 1: Parallel count of matches per chunk (using tabulate)
+;; 2. Phase 2: Parallel prefix scan to compute write offsets
+;; 3. Phase 3: Parallel write filtered elements to output array (using parfor)
+;;
+;; Key insight: Avoid list allocation - use pre-allocated vectors throughout.
 
 (require racket/fixnum
+         racket/unsafe/ops
          "../common/cli.rkt"
          "../common/run.rkt"
          "../common/logging.rkt")
@@ -16,69 +22,84 @@
          generate-input-vector)
 
 ;; Sequential collect - filter elements matching predicate
+;; Uses two passes to avoid list allocation:
+;; Pass 1: Count matches
+;; Pass 2: Copy matches to pre-allocated result
 (define (collect-sequential vec pred)
-  (define result-list '())
-  (for ([x (in-vector vec)])
+  (define n (vector-length vec))
+  ;; Pass 1: Count matches
+  (define count 0)
+  (for ([i (in-range n)])
+    (when (pred (unsafe-vector-ref vec i))
+      (set! count (fx+ count 1))))
+  ;; Pass 2: Copy matches
+  (define result (make-vector count))
+  (define pos 0)
+  (for ([i (in-range n)])
+    (define x (unsafe-vector-ref vec i))
     (when (pred x)
-      (set! result-list (cons x result-list))))
-  (list->vector (reverse result-list)))
+      (unsafe-vector-set! result pos x)
+      (set! pos (fx+ pos 1))))
+  result)
 
-;; Parallel collect using two-phase approach:
-;; 1. Parallel filter to identify matches and compute positions (prefix sum)
-;; 2. Parallel copy of matches to output
+;; Parallel collect using MPL's three-phase approach
+;; Optimized to avoid O(n) flags allocation by recomputing predicate in phase 3
 (define (collect-parallel vec pred workers)
   (define n (vector-length vec))
-  (define chunk-size (quotient (+ n workers -1) workers))
+  (define chunk-size (max 1 (quotient (+ n workers -1) workers)))
+  (define num-chunks (quotient (+ n chunk-size -1) chunk-size))
   (define pool (make-parallel-thread-pool workers))
 
-  ;; Phase 1: Filter in parallel, compute local counts
-  (define channels1
-    (for/list ([w (in-range workers)])
+  ;; Phase 1: Parallel count of matches per chunk
+  (define counts (make-vector num-chunks 0))
+
+  (define count-channels
+    (for/list ([c (in-range num-chunks)])
       (define ch (make-channel))
-      (define start (* w chunk-size))
-      (define end (min (+ start chunk-size) n))
+      (define start (fx* c chunk-size))
+      (define end (min (fx+ start chunk-size) n))
       (thread #:pool pool
-       (λ ()
-         ;; Identify matches in this chunk
-         (define matches '())
-         (for ([i (in-range start end)])
-           (define x (vector-ref vec i))
-           (when (pred x)
-             (set! matches (cons (cons i x) matches))))
-         (channel-put ch (reverse matches))))
+        (λ ()
+          (define local-count 0)
+          (for ([i (in-range start end)])
+            (when (pred (unsafe-vector-ref vec i))
+              (set! local-count (fx+ local-count 1))))
+          (unsafe-vector-set! counts c local-count)
+          (channel-put ch #t)))
       ch))
 
-  (define chunk-data (map channel-get channels1))
+  (for-each channel-get count-channels)
 
-  ;; Phase 2: Sequential concatenation (could be parallelized with prefix sum)
-  (define total-count
-    (for/sum ([chunk (in-list chunk-data)])
-      (length chunk)))
+  ;; Phase 2: Prefix sum to compute write offsets (sequential - small)
+  (define offsets (make-vector (fx+ num-chunks 1) 0))
+  (for ([c (in-range num-chunks)])
+    (unsafe-vector-set! offsets (fx+ c 1)
+      (fx+ (unsafe-vector-ref offsets c)
+           (unsafe-vector-ref counts c))))
 
-  ;; Phase 3: Parallel copy to result
+  (define total-count (unsafe-vector-ref offsets num-chunks))
   (define result (make-vector total-count))
-  (define positions
-    (let loop ([chunks chunk-data] [pos 0] [acc '()])
-      (if (null? chunks)
-          (reverse acc)
-          (loop (cdr chunks)
-                (+ pos (length (car chunks)))
-                (cons (cons pos (car chunks)) acc)))))
 
-  (define channels2
-    (for/list ([pos-chunk (in-list positions)])
-      (define pos (car pos-chunk))
-      (define chunk (cdr pos-chunk))
+  ;; Phase 3: Parallel write to result using computed offsets
+  ;; Recompute predicate to avoid flags vector allocation
+  (define write-channels
+    (for/list ([c (in-range num-chunks)])
       (define ch (make-channel))
+      (define start (fx* c chunk-size))
+      (define end (min (fx+ start chunk-size) n))
+      (define write-pos (unsafe-vector-ref offsets c))
       (thread #:pool pool
-       (λ ()
-         (for ([i (in-naturals)]
-               [match (in-list chunk)])
-           (vector-set! result (+ pos i) (cdr match)))
-         (channel-put ch #t)))
+        (λ ()
+          (define pos write-pos)
+          (for ([i (in-range start end)])
+            (define x (unsafe-vector-ref vec i))
+            (when (pred x)
+              (unsafe-vector-set! result pos x)
+              (set! pos (fx+ pos 1))))
+          (channel-put ch #t)))
       ch))
 
-  (for-each channel-get channels2)
+  (for-each channel-get write-channels)
   (parallel-thread-pool-close pool)
 
   result)
