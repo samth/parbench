@@ -121,6 +121,35 @@ raco test tests/                    # All tests
 raco test tests/bmbench-test.rkt    # Specific test
 ```
 
+### Critical: Test-Benchmark Alignment
+
+**Before writing or modifying tests, ALWAYS read the benchmark file first** to verify:
+
+1. **Data types must match exactly:**
+   - `fxvector` for integer-sort (NOT `vector`)
+   - `flvector` for mcss and other floating-point benchmarks (NOT `vector`)
+   - `bytes` for bignum-add (NOT `vector`)
+   - `(vector x y)` for convex-hull points (NOT `(cons x y)` pairs)
+   - `graph` structs for bfs/centrality (use `make-graph` or `generate-random-graph`)
+
+2. **Function signatures must match:**
+   - Check the `provide` statement to see exported functions
+   - Count parameters carefully (e.g., `bfs-sequential` takes 3 args: graph, source, workers)
+   - Check return types (single value vs `values` for multiple returns)
+
+3. **CLI flags must exist:**
+   - Read the `command-line` section in the benchmark's `main` module
+   - Common flags: `--n`, `--workers`, `--repeat`, `--log`
+   - Each benchmark may have unique flags (check before assuming)
+
+4. **Test only existing benchmarks:**
+   - If a test references a file that doesn't exist, delete the test
+   - Don't create tests for planned/future benchmarks
+
+5. **Keep test sizes small:**
+   - Use small problem sizes to avoid timeouts (< 5s per test)
+   - Reduce worker counts for parallel tests (2-4 workers max)
+
 ## Common Patterns
 
 ### CLI Argument Parsing
