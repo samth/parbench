@@ -122,12 +122,11 @@ list_benchmarks() {
     exit 0
 }
 
-# Run a suite
+# Run a suite (without generating its own HTML - we'll generate combined report)
 run_suite() {
     local suite="$1"
     local log_dir="$2"
-    local html_file="$3"
-    local workers="$4"
+    local workers="$3"
 
     echo -e "${BOLD}Running $suite benchmarks...${NC}"
     echo "  Worker counts: $workers"
@@ -137,13 +136,13 @@ run_suite() {
     local cmd=""
     case "$suite" in
         mpl)
-            cmd="racket $SCRIPT_DIR/run-mpl-benchmarks.rkt --log-dir $log_dir --output $html_file --workers $workers"
+            cmd="racket $SCRIPT_DIR/run-mpl-benchmarks.rkt --log-dir $log_dir --output /dev/null --workers $workers"
             ;;
         shootout)
-            cmd="racket $SCRIPT_DIR/run-shootout-benchmarks.rkt --log-dir $log_dir --output $html_file --workers $workers"
+            cmd="racket $SCRIPT_DIR/run-shootout-benchmarks.rkt --log-dir $log_dir --output /dev/null --workers $workers"
             ;;
         racket)
-            cmd="racket $SCRIPT_DIR/run-racket-benchmarks.rkt --log-dir $log_dir --output $html_file --workers $workers"
+            cmd="racket $SCRIPT_DIR/run-racket-benchmarks.rkt --log-dir $log_dir --output /dev/null --workers $workers"
             ;;
         *)
             echo "Unknown suite: $suite"
@@ -155,6 +154,46 @@ run_suite() {
         echo "Would run: $cmd"
     else
         $cmd
+    fi
+}
+
+# Generate combined HTML report from all log files
+generate_combined_report() {
+    local output_dir="$1"
+    local html_file="$2"
+    local title="$3"
+
+    echo -e "${BOLD}Generating combined HTML report...${NC}"
+
+    # Create combined directory with symlinks to all .sexp files
+    local combined_dir="$output_dir/.combined"
+    rm -rf "$combined_dir"
+    mkdir -p "$combined_dir"
+
+    # Find all .sexp files and create uniquely-named symlinks
+    local count=0
+    for sexp_file in $(find "$output_dir" -name "*.sexp" -type f 2>/dev/null | grep -v "/.combined/"); do
+        local base=$(basename "$sexp_file")
+        local dir=$(basename $(dirname "$sexp_file"))
+        ln -sf "$sexp_file" "$combined_dir/${dir}-${base}"
+        count=$((count + 1))
+    done
+
+    if [ $count -eq 0 ]; then
+        echo "  No log files found to combine"
+        return
+    fi
+
+    echo "  Found $count log file(s)"
+
+    if [ "$DRY_RUN" = true ]; then
+        echo "Would run: racket $SCRIPT_DIR/benchmarks/tools/visualize.rkt --no-run --log-dir $combined_dir --output $html_file --title \"$title\""
+    else
+        racket "$SCRIPT_DIR/benchmarks/tools/visualize.rkt" \
+            --no-run \
+            --log-dir "$combined_dir" \
+            --output "$html_file" \
+            --title "$title"
     fi
 }
 
@@ -230,17 +269,22 @@ echo "Quick mode:    $QUICK_MODE"
 echo "Detected cores: $(detect_cores)"
 echo ""
 
+# Track which suites we run for the report title
+SUITES_RUN=""
+
 # Run the appropriate suite(s)
 case "$SUITE" in
     all)
-        run_suite "mpl" "$OUTPUT_DIR/mpl" "$OUTPUT_DIR/mpl-results.html" "$WORKER_COUNTS"
+        run_suite "mpl" "$OUTPUT_DIR/mpl" "$WORKER_COUNTS"
         echo ""
-        run_suite "shootout" "$OUTPUT_DIR/shootout" "$OUTPUT_DIR/shootout-results.html" "$WORKER_COUNTS"
+        run_suite "shootout" "$OUTPUT_DIR/shootout" "$WORKER_COUNTS"
         echo ""
-        run_suite "racket" "$OUTPUT_DIR/racket" "$OUTPUT_DIR/racket-results.html" "$WORKER_COUNTS"
+        run_suite "racket" "$OUTPUT_DIR/racket" "$WORKER_COUNTS"
+        SUITES_RUN="All Benchmarks"
         ;;
     mpl|shootout|racket)
-        run_suite "$SUITE" "$OUTPUT_DIR/$SUITE" "$OUTPUT_DIR/$SUITE-results.html" "$WORKER_COUNTS"
+        run_suite "$SUITE" "$OUTPUT_DIR/$SUITE" "$WORKER_COUNTS"
+        SUITES_RUN="${SUITE^} Benchmarks"  # Capitalize first letter
         ;;
     *)
         echo "Unknown suite: $SUITE"
@@ -248,6 +292,12 @@ case "$SUITE" in
         exit 1
         ;;
 esac
+
+# Generate combined HTML report
+if [ "$GENERATE_HTML" = true ]; then
+    echo ""
+    generate_combined_report "$OUTPUT_DIR" "$OUTPUT_DIR/results.html" "$SUITES_RUN"
+fi
 
 # Summary
 echo ""
@@ -259,14 +309,5 @@ echo "Results saved to: $OUTPUT_DIR/"
 if [ "$GENERATE_HTML" = true ]; then
     echo ""
     echo "View results:"
-    case "$SUITE" in
-        all)
-            echo "  open $OUTPUT_DIR/mpl-results.html"
-            echo "  open $OUTPUT_DIR/shootout-results.html"
-            echo "  open $OUTPUT_DIR/racket-results.html"
-            ;;
-        *)
-            echo "  open $OUTPUT_DIR/$SUITE-results.html"
-            ;;
-    esac
+    echo "  open $OUTPUT_DIR/results.html"
 fi
