@@ -55,7 +55,7 @@
 (module+ test
   (define g (make-graph vertex-count edges))
   (define source 0)
-  (define seq-parent (bfs-sequential g source))
+  (define seq-parent (bfs-sequential g source 1))
   (define par-parent (bfs-parallel g source 3))
 
   (check-true (valid-parent? seq-parent))

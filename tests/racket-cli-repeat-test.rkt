@@ -25,9 +25,8 @@
    (λ ()
      (run-benchmark-main
       "benchmarks/racket/bmbench.rkt"
-      '("--sizes" "64"
+      '("--n" "64"
         "--workers" "1"
-        "--target-work" "64"
         "--repeat" "2")))))
 
 (test-case "richards accepts repeat override"

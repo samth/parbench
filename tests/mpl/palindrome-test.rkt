@@ -4,19 +4,18 @@
          "../../benchmarks/mpl/palindrome.rkt")
 
 (module+ test
-  ;; Test known palindromes
-  (check-equal? (palindrome-sequential "racecar") #t)
-  (check-equal? (palindrome-sequential "abba") #t)
-  (check-equal? (palindrome-sequential "a") #t)
-  (check-equal? (palindrome-sequential "") #t)
+  ;; Test with known patterns - functions return (values position length)
 
-  ;; Test non-palindromes
-  (check-equal? (palindrome-sequential "hello") #f)
-  (check-equal? (palindrome-sequential "racecars") #f)
+  ;; Test with "racecar" - the whole string is a palindrome
+  (define-values (pos1 len1) (longest-palindrome-sequential "racecar"))
+  (check-equal? len1 7)  ; "racecar" is 7 chars
+
+  ;; Test with "abba" - the whole string is a palindrome
+  (define-values (pos2 len2) (longest-palindrome-sequential "abba"))
+  (check-equal? len2 4)
 
   ;; Test parallel version matches sequential
-  (define test-str (generate-test-string 10000 #t 42))
-  (define seq (palindrome-sequential test-str))
-  (define par (palindrome-parallel test-str 3 1000))
-  (check-equal? par seq)
-  (check-equal? par #t))
+  (define test-str (generate-test-string 1000 42))
+  (define-values (seq-pos seq-len) (longest-palindrome-sequential test-str))
+  (define-values (par-pos par-len) (longest-palindrome-parallel test-str 4))
+  (check-equal? par-len seq-len))

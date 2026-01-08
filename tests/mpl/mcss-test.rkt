@@ -1,6 +1,7 @@
 #lang racket
 
 (require rackunit
+         racket/flonum
          "../../benchmarks/mpl/mcss.rkt")
 
 ;; Test MCSS with known inputs
@@ -9,10 +10,10 @@
   (check-= result expected 0.001
            (format "MCSS should be ~a" expected)))
 
-;; Test cases
-(test-mcss #(-2.0 1.0 -3.0 4.0 -1.0 2.0 1.0 -5.0 4.0) 6.0)  ; [4,-1,2,1]
-(test-mcss #(1.0 2.0 3.0) 6.0)  ; All positive
-(test-mcss #(-1.0 -2.0 -3.0) -1.0)  ; All negative (best is single element)
+;; Test cases - use flvector instead of vector
+(test-mcss (flvector -2.0 1.0 -3.0 4.0 -1.0 2.0 1.0 -5.0 4.0) 6.0)  ; [4,-1,2,1]
+(test-mcss (flvector 1.0 2.0 3.0) 6.0)  ; All positive
+(test-mcss (flvector -1.0 -2.0 -3.0) -1.0)  ; All negative (best is single element)
 
 ;; Test sequential vs parallel equivalence
 (define test-data (generate-random-data 1000 42))

@@ -5,15 +5,15 @@
          "../../benchmarks/mpl/convex-hull.rkt")
 
 (define sample-points
-  (list (cons 0.0 0.0)
-        (cons 1.0 0.0)
-        (cons 1.0 1.0)
-        (cons 0.0 1.0)
-        (cons 0.5 0.5)
-        (cons 0.2 0.8)))
+  (list (vector 0.0 0.0)
+        (vector 1.0 0.0)
+        (vector 1.0 1.0)
+        (vector 0.0 1.0)
+        (vector 0.5 0.5)
+        (vector 0.2 0.8)))
 
 (define (canonical hull)
-  (sort (map (λ (p) (list (car p) (cdr p))) hull)
+  (sort (map (λ (p) (list (vector-ref p 0) (vector-ref p 1))) hull)
         (λ (a b)
           (or (< (first a) (first b))
               (and (= (first a) (first b))

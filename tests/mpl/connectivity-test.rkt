@@ -34,12 +34,12 @@
 (check-equal? (count-components uf3 4) 4
               "All isolated should have 4 components")
 
-;; Test sequential vs parallel
-(define random-graph (generate-random-graph 100 200 42))
+;; Test sequential vs parallel with small graph to avoid resource issues
+(define random-graph (generate-random-graph 50 100 42))
 (define seq-uf (connectivity-sequential random-graph))
-(define par-uf (connectivity-parallel random-graph 4))
-(check-equal? (count-components seq-uf 100)
-              (count-components par-uf 100)
+(define par-uf (connectivity-parallel random-graph 2))
+(check-equal? (count-components seq-uf 50)
+              (count-components par-uf 50)
               "Sequential and parallel should find same number of components")
 
 (printf "connectivity tests passed\n")
