@@ -10,23 +10,11 @@
          "benchmarks/tools/analysis.rkt")
 
 ;; Benchmark configurations: (name args...)
-;; Tuned so sequential version takes >= 1 second
-;; Includes both original (v1) and SBCL-style (v2) parallel implementations
+;; Tuned so sequential version takes ~500ms per iteration
 (define benchmark-configs
-  '((binary-trees "--n" "18" "--repeat" "10")
-    (binary-trees-v2 "--n" "18" "--repeat" "10")
-    (spectral-norm "--n" "3000" "--repeat" "10")
-    (spectral-norm-v2 "--n" "3000" "--repeat" "10")
-    (fannkuch-redux "--n" "11" "--repeat" "10")
-    (fannkuch-redux-v2 "--n" "11" "--repeat" "10")
-    (mandelbrot "--n" "4000" "--repeat" "10")
-    (mandelbrot-v2 "--n" "4000" "--repeat" "10")
-    (k-nucleotide "--n" "500000" "--repeat" "10")
-    (k-nucleotide-v2 "--n" "500000" "--repeat" "10")
-    (regex-dna "--n" "500000" "--repeat" "10")
-    (regex-dna-v2 "--n" "500000" "--repeat" "10")))
-
-;; All benchmarks now have sequential/parallel variants
+  '((bmbench "--n" "1000000" "--repeat" "10")
+    (richards "--iterations" "100" "--repeat" "10")
+    (rows1b "--rows" "2000000" "--chunk-size" "200000" "--repeat" "10")))
 
 (define worker-counts '(1 2 4 6 8))
 
@@ -34,20 +22,9 @@
 (define (parse-worker-counts str)
   (map string->number (string-split str ",")))
 
-(define (run-benchmark name args worker-count log-path)
-  (define benchmark-path
-    (build-path "benchmarks" "shootout" (format "~a.rkt" name)))
-  (define cmd-args
-    (append args (list "--workers" (number->string worker-count)
-                      "--log" log-path)))
-  (printf "Running ~a with ~a workers...\n" name worker-count)
-  (define result (apply system* (find-executable-path "racket") benchmark-path cmd-args))
-  (unless result
-    (eprintf "Warning: ~a with ~a workers failed\n" name worker-count)))
-
 (define (run-benchmark-sequential name args log-path)
   (define benchmark-path
-    (build-path "benchmarks" "shootout" (format "~a.rkt" name)))
+    (build-path "benchmarks" "racket" (format "~a.rkt" name)))
   (define cmd-args
     (append args (list "--workers" "1" "--log" log-path)))
   (printf "Running ~a sequential (workers=1)...\n" name)
@@ -57,11 +34,11 @@
 
 (define (run-benchmark-parallel name args worker-count log-path)
   (define benchmark-path
-    (build-path "benchmarks" "shootout" (format "~a.rkt" name)))
+    (build-path "benchmarks" "racket" (format "~a.rkt" name)))
   (define cmd-args
     (append args (list "--workers" (number->string worker-count)
-                      "--log" log-path
-                      "--skip-sequential")))
+                       "--log" log-path
+                       "--skip-sequential")))
   (printf "Running ~a with ~a workers (parallel only)...\n" name worker-count)
   (define result (apply system* (find-executable-path "racket") benchmark-path cmd-args))
   (unless result
@@ -129,7 +106,7 @@
   ;; Replace placeholders
   (define html
     (string-replace
-     (string-replace template "@@TITLE@@" "Shootout Benchmarks" #:all? #t)
+     (string-replace template "@@TITLE@@" "Racket Benchmarks" #:all? #t)
      "@@DATA@@" json-data #:all? #t))
 
   ;; Write output
@@ -140,12 +117,12 @@
   (printf "Report generated: ~a\n" output-file))
 
 (module+ main
-  (define log-dir "logs/shootout")
-  (define output-file "shootout-results.html")
+  (define log-dir "logs/racket")
+  (define output-file "racket-results.html")
   (define custom-workers #f)
 
   (command-line
-   #:program "run-shootout-benchmarks"
+   #:program "run-racket-benchmarks"
    #:once-each
    [("--log-dir") dir "Directory for log files" (set! log-dir dir)]
    [("--output") file "Output HTML file" (set! output-file file)]
@@ -155,7 +132,7 @@
   ;; Use custom workers if provided, otherwise default
   (define active-workers (or custom-workers worker-counts))
 
-  (printf "Starting shootout benchmark suite...\n")
+  (printf "Starting Racket benchmark suite...\n")
   (printf "Worker counts: ~a\n" active-workers)
   (printf "Log directory: ~a\n" log-dir)
   (printf "Output file: ~a\n\n" output-file)

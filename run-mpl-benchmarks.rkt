@@ -5,6 +5,7 @@
          racket/path
          racket/system
          racket/list
+         racket/string
          json
          "benchmarks/tools/analysis.rkt")
 
@@ -86,6 +87,10 @@
 
 (define worker-counts '(1 2 4 6 8))
 
+;; Parse comma-separated worker counts string into list of numbers
+(define (parse-worker-counts str)
+  (map string->number (string-split str ",")))
+
 (define (run-benchmark-sequential name args log-path)
   (define benchmark-path
     (build-path "benchmarks" "mpl" (format "~a.rkt" name)))
@@ -109,6 +114,9 @@
     (eprintf "Warning: ~a with ~a workers failed\n" name worker-count)))
 
 (define (run-all-benchmarks log-dir)
+  (run-all-benchmarks-with-workers log-dir worker-counts))
+
+(define (run-all-benchmarks-with-workers log-dir workers-list)
   (make-directory* log-dir)
 
   (for ([config benchmark-configs])
@@ -123,7 +131,7 @@
     ;; Run sequential version once with workers=1
     (run-benchmark-sequential name args log-path)
     ;; Run parallel versions for all worker counts
-    (for ([workers worker-counts])
+    (for ([workers workers-list])
       (run-benchmark-parallel name args workers log-path))))
 
 (define (generate-html-report log-dir output-file)
@@ -191,19 +199,25 @@
 (module+ main
   (define log-dir "logs/mpl")
   (define output-file "mpl-results.html")
+  (define custom-workers #f)
 
   (command-line
    #:program "run-mpl-benchmarks"
    #:once-each
    [("--log-dir") dir "Directory for log files" (set! log-dir dir)]
-   [("--output") file "Output HTML file" (set! output-file file)])
+   [("--output") file "Output HTML file" (set! output-file file)]
+   [("--workers") counts "Comma-separated worker counts (e.g., 1,2,4,8)"
+    (set! custom-workers (parse-worker-counts counts))])
+
+  ;; Use custom workers if provided, otherwise default
+  (define active-workers (or custom-workers worker-counts))
 
   (printf "Starting MPL benchmark suite...\n")
-  (printf "Worker counts: ~a\n" worker-counts)
+  (printf "Worker counts: ~a\n" active-workers)
   (printf "Log directory: ~a\n" log-dir)
   (printf "Output file: ~a\n\n" output-file)
 
-  (run-all-benchmarks log-dir)
+  (run-all-benchmarks-with-workers log-dir active-workers)
   (generate-html-report log-dir output-file)
 
   (printf "\nDone! Open ~a in your browser to view results.\n" output-file))

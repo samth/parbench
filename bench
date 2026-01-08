@@ -1,0 +1,272 @@
+#!/bin/bash
+#
+# bench - Unified benchmark runner for parbench
+#
+# Usage:
+#   ./bench [SUITE] [OPTIONS]
+#
+# Suites:
+#   all         Run all benchmarks (default)
+#   mpl         MPL parallel benchmarks (27)
+#   shootout    Shootout benchmarks (12)
+#   racket      Racket benchmarks (3)
+#
+# Options:
+#   --quick             Quick smoke test mode (small sizes, fewer repeats)
+#   --cores N,M,...     Specific worker counts (comma-separated)
+#   --cores N-M         Range of worker counts (e.g., 1-8)
+#   --output DIR        Output directory (default: ./results)
+#   --no-html           Skip HTML report generation
+#   --list              List available benchmarks
+#   --dry-run           Show commands without executing
+#   --help              Show this help
+#
+# Examples:
+#   ./bench                     # Run all benchmarks with auto core sweep
+#   ./bench mpl                 # Just MPL benchmarks
+#   ./bench --quick             # Quick smoke test
+#   ./bench --cores 1,4,8       # Specific core counts
+#   ./bench mpl --cores 1-4     # MPL with cores 1,2,4
+#
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Defaults
+SUITE="all"
+OUTPUT_DIR="$SCRIPT_DIR/results"
+QUICK_MODE=false
+GENERATE_HTML=true
+DRY_RUN=false
+WORKER_COUNTS=""
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Core detection
+detect_cores() {
+    if command -v nproc &> /dev/null; then
+        nproc
+    elif command -v sysctl &> /dev/null; then
+        sysctl -n hw.ncpu 2>/dev/null || echo 8
+    else
+        echo 8  # fallback
+    fi
+}
+
+# Generate default worker counts based on available cores
+default_worker_counts() {
+    local max_cores=$(detect_cores)
+    local counts="1"
+    for n in 2 4 6 8 12 16 24 32; do
+        if [ $n -le $max_cores ]; then
+            counts="$counts,$n"
+        fi
+    done
+    echo "$counts"
+}
+
+# Parse range notation (e.g., 1-8) into comma-separated list
+parse_cores() {
+    local input="$1"
+    if [[ "$input" == *"-"* ]]; then
+        local start="${input%-*}"
+        local end="${input#*-}"
+        local result=""
+        for ((i=start; i<=end; i++)); do
+            # Only include common worker counts
+            if [[ $i -eq 1 || $i -eq 2 || $i -eq 4 || $i -eq 6 || $i -eq 8 || $i -eq 12 || $i -eq 16 || $i -eq 24 || $i -eq 32 ]]; then
+                if [ -z "$result" ]; then
+                    result="$i"
+                else
+                    result="$result,$i"
+                fi
+            fi
+        done
+        echo "$result"
+    elif [[ "$input" == "max" ]]; then
+        detect_cores
+    else
+        echo "$input"
+    fi
+}
+
+# Show help
+show_help() {
+    sed -n '2,30p' "$0" | sed 's/^# //' | sed 's/^#//'
+    exit 0
+}
+
+# List benchmarks
+list_benchmarks() {
+    echo -e "${BOLD}Available benchmarks:${NC}"
+    echo ""
+    echo -e "${BLUE}MPL (27):${NC}"
+    echo "  histogram, integer-sort, bfs, convex-hull, mis, msf, suffix-array,"
+    echo "  primes, merge-sort, samplesort, tokens, nqueens, dedup, word-count,"
+    echo "  fib, shuffle, grep, palindrome, parens, mcss, flatten, collect,"
+    echo "  bignum-add, subset-sum, triangle-count, connectivity, centrality"
+    echo ""
+    echo -e "${BLUE}Shootout (12):${NC}"
+    echo "  binary-trees, binary-trees-v2, spectral-norm, spectral-norm-v2,"
+    echo "  fannkuch-redux, fannkuch-redux-v2, mandelbrot, mandelbrot-v2,"
+    echo "  k-nucleotide, k-nucleotide-v2, regex-dna, regex-dna-v2"
+    echo ""
+    echo -e "${BLUE}Racket (3):${NC}"
+    echo "  bmbench, richards, rows1b"
+    exit 0
+}
+
+# Run a suite
+run_suite() {
+    local suite="$1"
+    local log_dir="$2"
+    local html_file="$3"
+    local workers="$4"
+
+    echo -e "${BOLD}Running $suite benchmarks...${NC}"
+    echo "  Worker counts: $workers"
+    echo "  Log directory: $log_dir"
+    echo ""
+
+    local cmd=""
+    case "$suite" in
+        mpl)
+            cmd="racket $SCRIPT_DIR/run-mpl-benchmarks.rkt --log-dir $log_dir --output $html_file --workers $workers"
+            ;;
+        shootout)
+            cmd="racket $SCRIPT_DIR/run-shootout-benchmarks.rkt --log-dir $log_dir --output $html_file --workers $workers"
+            ;;
+        racket)
+            cmd="racket $SCRIPT_DIR/run-racket-benchmarks.rkt --log-dir $log_dir --output $html_file --workers $workers"
+            ;;
+        *)
+            echo "Unknown suite: $suite"
+            exit 1
+            ;;
+    esac
+
+    if [ "$DRY_RUN" = true ]; then
+        echo "Would run: $cmd"
+    else
+        $cmd
+    fi
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        all|mpl|shootout|racket)
+            SUITE="$1"
+            shift
+            ;;
+        --quick|-q)
+            QUICK_MODE=true
+            shift
+            ;;
+        --cores|-c)
+            WORKER_COUNTS=$(parse_cores "$2")
+            shift 2
+            ;;
+        --no-html)
+            GENERATE_HTML=false
+            shift
+            ;;
+        --output|-o)
+            OUTPUT_DIR="$2"
+            shift 2
+            ;;
+        --list|-l)
+            list_benchmarks
+            ;;
+        --dry-run|-n)
+            DRY_RUN=true
+            shift
+            ;;
+        --help|-h)
+            show_help
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            echo "Run './bench --help' for usage"
+            exit 1
+            ;;
+        *)
+            # Assume it's a suite name
+            SUITE="$1"
+            shift
+            ;;
+    esac
+done
+
+# Set defaults
+if [ -z "$WORKER_COUNTS" ]; then
+    WORKER_COUNTS=$(default_worker_counts)
+fi
+
+# Quick mode uses fewer worker counts
+if [ "$QUICK_MODE" = true ]; then
+    WORKER_COUNTS="1,4"
+fi
+
+# Create output directory
+mkdir -p "$OUTPUT_DIR"
+
+# Print header
+echo ""
+echo -e "${BOLD}========================================${NC}"
+echo -e "${BOLD}  Parbench - Parallel Benchmark Suite${NC}"
+echo -e "${BOLD}========================================${NC}"
+echo ""
+echo "Suite:         $SUITE"
+echo "Worker counts: $WORKER_COUNTS"
+echo "Output dir:    $OUTPUT_DIR"
+echo "Quick mode:    $QUICK_MODE"
+echo "Detected cores: $(detect_cores)"
+echo ""
+
+# Run the appropriate suite(s)
+case "$SUITE" in
+    all)
+        run_suite "mpl" "$OUTPUT_DIR/mpl" "$OUTPUT_DIR/mpl-results.html" "$WORKER_COUNTS"
+        echo ""
+        run_suite "shootout" "$OUTPUT_DIR/shootout" "$OUTPUT_DIR/shootout-results.html" "$WORKER_COUNTS"
+        echo ""
+        run_suite "racket" "$OUTPUT_DIR/racket" "$OUTPUT_DIR/racket-results.html" "$WORKER_COUNTS"
+        ;;
+    mpl|shootout|racket)
+        run_suite "$SUITE" "$OUTPUT_DIR/$SUITE" "$OUTPUT_DIR/$SUITE-results.html" "$WORKER_COUNTS"
+        ;;
+    *)
+        echo "Unknown suite: $SUITE"
+        echo "Available suites: all, mpl, shootout, racket"
+        exit 1
+        ;;
+esac
+
+# Summary
+echo ""
+echo -e "${BOLD}========================================${NC}"
+echo -e "${GREEN}  Complete!${NC}"
+echo -e "${BOLD}========================================${NC}"
+echo ""
+echo "Results saved to: $OUTPUT_DIR/"
+if [ "$GENERATE_HTML" = true ]; then
+    echo ""
+    echo "View results:"
+    case "$SUITE" in
+        all)
+            echo "  open $OUTPUT_DIR/mpl-results.html"
+            echo "  open $OUTPUT_DIR/shootout-results.html"
+            echo "  open $OUTPUT_DIR/racket-results.html"
+            ;;
+        *)
+            echo "  open $OUTPUT_DIR/$SUITE-results.html"
+            ;;
+    esac
+fi

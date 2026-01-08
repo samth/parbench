@@ -1,325 +1,136 @@
-# Benchmark Harness Guide
+# Benchmark Guide
 
-This repository provides a comprehensive parallel benchmarking suite for Racket with three main benchmark categories:
+## Quick Start
 
-- **Racket Benchmarks** (3): Boyer-Moore majority voting, Richards device scheduler, 1 billion row challenge
-- **Shootout Benchmarks** (8): Classic language benchmark game workloads adapted for parallel execution
-- **MPL Benchmarks** (27): Graph algorithms, sorting, text processing, and numeric computations from the MPL parallel benchmark suite
-
-All benchmarks share a consistent command-line interface and S-expression logging format.
-
-## Layout
-
-```
-benchmarks/
-  common/
-    cli.rkt       ; shared option parsers
-    logging.rkt   ; S-expression log writer
-    run.rkt       ; GC-aware timing + verification helper
-  racket/
-    bmbench.rkt           ; Boyer–Moore majority with tree-merge reduction
-    richards.rkt          ; futures-enabled Richards benchmark
-    rows1b.rkt            ; 1B rows synthetic workload
-  shootout/
-    spectral-norm.rkt     ; spectral norm with thread-based parallelism
-    binary-trees.rkt      ; binary tree checksum with threads
-    nbody.rkt             ; n-body gravitational simulation
-    fannkuch-redux.rkt    ; fannkuch-redux permutation benchmark
-    mandelbrot.rkt        ; mandelbrot set fractal generation
-    fasta.rkt             ; FASTA sequence generation benchmark
-    regex-dna.rkt         ; Regex DNA pattern matching benchmark
-    k-nucleotide.rkt      ; K-nucleotide frequency analysis benchmark
-  mpl/
-    bfs.rkt               ; breadth-first search
-    histogram.rkt         ; parallel histogram
-    integer-sort.rkt      ; parallel counting sort
-    ... (27 benchmarks total)
-  tools/
-    analysis.rkt          ; shared log aggregation helpers
-    summarize-results.rkt ; S-expression log aggregator
-    plot-results.rkt      ; PNG plotting utility powered by `plot`
-    visualize.rkt         ; interactive HTML dashboard generator
-```
-
-## Running the Racket Benchmarks
-
-Each benchmark accepts a consistent set of CLI switches and will emit one `(benchmark ...)` S-expression per timed run. Examples:
+The simplest way to run benchmarks is with the unified `./bench` command:
 
 ```bash
-# Boyer–Moore majority with parallel tree-merge reduction
-racket benchmarks/racket/bmbench.rkt \
-  --n 1000000 \
-  --workers 4 \
-  --probability 0.7 \
-  --log logs/bmbench.sexp
-
-# Richards benchmark with parallel sweep
-racket benchmarks/racket/richards.rkt \
-  --iterations 10 \
-  --workers 1,4,8 \
-  --log logs/richards.sexp
-
-# Generated “1B rows” challenge benchmark
-racket benchmarks/racket/rows1b.rkt \
-  --rows 5000000 \
-  --workers 8 \
-  --chunk-size 500000 \
-  --repeat 3 \
-  --log logs/rows1b.sexp
-
-# Spectral norm (shootout) benchmark
-racket benchmarks/shootout/spectral-norm.rkt \
-  --n 2000 \
-  --iterations 15 \
-  --workers 8 \
-  --repeat 5 \
-  --log logs/spectral-norm.sexp
-
-# Binary trees (shootout) benchmark
-racket benchmarks/shootout/binary-trees.rkt \
-  --max-depth 18 \
-  --workers 8 \
-  --repeat 3 \
-  --log logs/binary-trees.sexp
-
-# N-body simulation (shootout) benchmark
-racket benchmarks/shootout/nbody.rkt \
-  --n 5000000 \
-  --workers 8 \
-  --repeat 3 \
-  --log logs/nbody.sexp
-
-# Fannkuch-redux (shootout) benchmark
-racket benchmarks/shootout/fannkuch-redux.rkt \
-  --n 10 \
-  --workers 1 \
-  --repeat 3 \
-  --log logs/fannkuch-redux.sexp
-
-# Mandelbrot set (shootout) benchmark
-racket benchmarks/shootout/mandelbrot.rkt \
-  --n 1000 \
-  --workers 8 \
-  --repeat 3 \
-  --log logs/mandelbrot.sexp
-
-# FASTA (shootout) benchmark
-racket benchmarks/shootout/fasta.rkt \
-  --n 150000 \
-  --workers 4 \
-  --repeat 3 \
-  --log logs/fasta.sexp
-
-# Regex DNA (shootout) benchmark
-racket benchmarks/shootout/regex-dna.rkt \
-  --n 150000 \
-  --workers 4 \
-  --repeat 3 \
-  --log logs/regex-dna.sexp
-
-# K-Nucleotide (shootout) benchmark
-racket benchmarks/shootout/k-nucleotide.rkt \
-  --n 150000 \
-  --workers 4 \
-  --repeat 3 \
-  --log logs/k-nucleotide.sexp
+./bench              # Run all benchmarks, auto-detect cores
+./bench mpl          # Just MPL benchmarks (27)
+./bench shootout     # Just Shootout benchmarks (12)
+./bench racket       # Just Racket benchmarks (3)
+./bench --quick      # Quick smoke test
+./bench --cores 1,4,8  # Specific core counts
+./bench --help       # Full options
 ```
 
-Key switches (all optional):
+Results are saved to `./results/` with HTML reports.
 
-- `--sizes`: Comma-separated vector lengths (Boyer–Moore benchmarks).
-- `--workers`: Worker counts to evaluate in the parallel sweeps (bench-specific meaning documented above).
-- `--target-work`: Aggregate work target to normalize iteration counts (Boyer–Moore).
-- `--probability`, `--kinds`, `--threshold`, `--chunk-size`, `--chunk-multiplier`: Workload tuning for Boyer–Moore variants.
-- `--rows`, `--chunk-size`, `--repeat`: Generation size and scheduling parameters for the “1B rows” benchmark.
-- `--n`, `--max-depth`, `--iterations`, `--workers`, `--repeat`: Controls for the shootout workloads (spectral norm, binary trees, n-body, fannkuch-redux).
-- `--iterations`: Number of full Richards runs per benchmark invocation.
-- `--log`: Write S-expression records to a file in addition to stdout.
+## Suite Runners
+
+For more control, use the suite-specific runners directly:
+
+```bash
+# MPL benchmarks (27) with custom worker counts
+racket run-mpl-benchmarks.rkt --workers 1,2,4,8 --log-dir results/mpl
+
+# Shootout benchmarks (12)
+racket run-shootout-benchmarks.rkt --workers 1,4,8 --output shootout.html
+
+# Racket benchmarks (3)
+racket run-racket-benchmarks.rkt --workers 1,2,4
+```
+
+Each runner:
+- Runs all benchmarks in the suite
+- Sweeps through specified worker counts
+- Generates an HTML visualization report
+
+## Individual Benchmarks
+
+Run any single benchmark directly:
+
+```bash
+# MPL benchmarks
+racket benchmarks/mpl/fib.rkt --n 42 --threshold 30 --workers 4 --repeat 5
+racket benchmarks/mpl/histogram.rkt --n 200000000 --workers 8 --log results/hist.sexp
+racket benchmarks/mpl/bfs.rkt --n 8000000 --graph-type grid --workers 4
+
+# Shootout benchmarks
+racket benchmarks/shootout/binary-trees.rkt --n 18 --workers 8 --repeat 10
+racket benchmarks/shootout/mandelbrot.rkt --n 4000 --workers 8
+
+# Racket benchmarks
+racket benchmarks/racket/bmbench.rkt --n 1000000 --workers 4 --repeat 10
+racket benchmarks/racket/richards.rkt --iterations 100 --workers 8
+```
+
+### Common Options
+
+All benchmarks support:
+- `--workers N` - Number of parallel workers
+- `--repeat N` - Number of timed iterations
+- `--log FILE` - Write S-expression results to file
+- `--skip-sequential` - Skip sequential baseline run
 
 ## Log Format
 
-Each run produces an S-expression of the form:
+Each run produces an S-expression record:
 
-```
+```scheme
 (benchmark
-  (name bmbench)
+  (name histogram)
   (variant parallel)
   (iteration 1)
-  (repeat 1)
-  (metrics (cpu-ms 4) (real-ms 4) (gc-ms 0))
-  (params (size 1000) (repeats 1) (majority 7) ...)
-  (metadata (timestamp 1758661801) (racket-version "8.18.0.16") ...)
+  (repeat 10)
+  (metrics (cpu-ms 520) (real-ms 515) (gc-ms 12))
+  (params (n 200000000) (workers 8))
+  (metadata (timestamp 1758661801) (racket-version "8.18"))
   (status ok))
 ```
 
-The `params` field differs per benchmark but always lists key/value pairs that describe the run configuration. These records are designed to be easy to parse via `read`.
-
-## Summarizing Results
-
-The summarizer consumes one or more `.sexp` log files and prints aggregate statistics (count, mean/σ/min/max real time, mean CPU time) grouped by benchmark name and variant.
+## Analysis Tools
 
 ```bash
-racket benchmarks/tools/summarize-results.rkt logs/bmbench.sexp logs/richards.sexp
-```
+# Summarize log files (mean, stddev, min, max)
+racket benchmarks/tools/summarize-results.rkt results/*.sexp
 
-Sample output:
-
-```
-name variant count real-mean(ms) real-stddev real-min real-max cpu-mean(ms)
-bmbench sequential 1.000 3.000 0.000 3.000 3.000 3.000
-bmbench parallel   1.000 4.000 0.000 4.000 4.000 4.000
-```
-
-Pass `-` to read from stdin if you are piping results.
-
-## Plotting Results
-
-Use the plotting utility to turn aggregated statistics into a PNG bar chart. Variants are grouped per benchmark name, and you can toggle between real or CPU means.
-
-```bash
+# Generate PNG plots
 racket benchmarks/tools/plot-results.rkt \
-  --input logs/bmbench.sexp \
-  --input logs/binary-trees.sexp \
+  --input results/*.sexp \
   --metric real \
-  --title "Benchmark (real ms)" \
-  --output plots/benchmark-real.png
-```
+  --output plots/benchmark.png
 
-Metrics supported: `real` (default) or `cpu`. The script computes means across all runs and generates a grouped bar chart using the `plot` library.
-
-## MPL Parallel Benchmarks
-
-The MPL suite provides Racket re-implementations of algorithms from the MPL Parallel ML Benchmark suite:
-
-```bash
-# Histogram - Parallel bucketed counting
-racket benchmarks/mpl/histogram.rkt \
-  --n 10000000 \
-  --buckets 256 \
-  --workers 8 \
-  --repeat 3 \
-  --log logs/mpl-histogram.sexp
-
-# Integer Sort - Parallel counting sort
-racket benchmarks/mpl/integer-sort.rkt \
-  --n 10000000 \
-  --range 1000000 \
-  --workers 8 \
-  --repeat 3 \
-  --log logs/mpl-isort.sexp
-
-# BFS - Level-synchronous breadth-first search
-racket benchmarks/mpl/bfs.rkt \
-  --n 10000 \
-  --degree 10 \
-  --workers 8 \
-  --repeat 3 \
-  --log logs/mpl-bfs.sexp
-
-# MIS - Maximal Independent Set (Luby's algorithm)
-racket benchmarks/mpl/mis.rkt \
-  --n 10000 \
-  --degree 10 \
-  --workers 8 \
-  --repeat 3 \
-  --log logs/mpl-mis.sexp
-
-# MSF - Minimum Spanning Forest (Borůvka's algorithm)
-racket benchmarks/mpl/msf.rkt \
-  --n 1000 \
-  --degree 10 \
-  --workers 8 \
-  --repeat 3 \
-  --log logs/mpl-msf.sexp
-
-# Suffix Array - Parallel prefix-doubling
-racket benchmarks/mpl/suffix-array.rkt \
-  --n 100000 \
-  --alphabet 4 \
-  --workers 8 \
-  --repeat 3 \
-  --log logs/mpl-suffix-array.sexp
-
-# Convex Hull - Parallel QuickHull
-racket benchmarks/mpl/convex-hull.rkt \
-  --n 10000 \
-  --distribution uniform-circle \
-  --workers 8 \
-  --repeat 3 \
-  --log logs/mpl-convex-hull.sexp
-```
-
-Each benchmark provides sequential and parallel variants, with tunable problem sizes and worker counts.
-
-## Running Multiple Benchmarks
-
-Use the unified suite runner to execute multiple benchmarks with a single command:
-
-```bash
-# Run all shootout benchmarks with default parameters
-racket benchmarks/run-suite.rkt --suite shootout
-
-# Run all benchmarks with quick smoke test configuration
-racket benchmarks/run-suite.rkt --suite all --config benchmarks/config/quick.sexp
-
-# Run specific suites
-racket benchmarks/run-suite.rkt --suite racket --suite shootout
-
-# Use custom log directory
-racket benchmarks/run-suite.rkt --suite shootout --log-dir my-logs
-```
-
-### Configuration Files
-
-Predefined configuration files control problem sizes and repetitions:
-
-- `benchmarks/config/quick.sexp` - Fast smoke tests (minimal sizes, 1 repetition)
-- `benchmarks/config/standard.sexp` - Moderate workloads (typical benchmarking)
-- `benchmarks/config/stress.sexp` - Large problem sizes (comprehensive evaluation)
-
-Configuration files use S-expression format with override specifications per benchmark.
-
-## Interactive Visualization
-
-The visualization tool runs benchmarks and generates an interactive HTML dashboard for analyzing results:
-
-```bash
-# Run all benchmarks and generate visualization
-racket benchmarks/tools/visualize.rkt --suite all --config benchmarks/config/quick.sexp
-
-# Run specific suite with custom output
+# Interactive HTML dashboard
 racket benchmarks/tools/visualize.rkt \
-  --suite shootout \
-  --config benchmarks/config/standard.sexp \
-  --output results.html \
-  --title "Shootout Benchmark Results"
-
-# Generate visualization from existing logs without re-running benchmarks
-racket benchmarks/tools/visualize.rkt --no-run --log-dir logs --output results.html
+  --log-dir results \
+  --output dashboard.html
 ```
 
-Key features:
-- **Interactive Charts**: Switch between bar, line, and radar charts
-- **Multiple Metrics**: View real time, CPU time, min/max values
-- **Linear/Log Scale**: Toggle between linear and logarithmic scales
-- **Summary Statistics**: Quick overview of total benchmarks, variants, and average times
-- **Detailed Table**: Complete data with all metrics and standard deviations
+## Configuration Files
 
-Options:
-- `--suite`, `-s`: Suite to run (racket, shootout, mpl, toy, or all)
-- `--config`, `-c`: Configuration file (quick.sexp, standard.sexp, stress.sexp)
-- `--log-dir`, `-l`: Directory for log files (default: logs)
-- `--output`, `-o`: Output HTML file (default: benchmark-results.html)
-- `--title`, `-t`: Dashboard title
-- `--no-run`: Generate visualization from existing logs only
+Pre-defined configurations in `benchmarks/config/`:
 
-## Benchmark Suite Summary
+| File | Purpose |
+|------|---------|
+| `quick.sexp` | Fast smoke tests (small sizes, 1 repeat) |
+| `standard.sexp` | Typical benchmarking (moderate sizes) |
+| `stress.sexp` | Large problems (comprehensive evaluation) |
 
-| Suite | Count | Description |
-|-------|-------|-------------|
-| Racket | 3 | Boyer-Moore, Richards, rows1b |
-| Shootout | 8 | Language benchmark game ports |
-| MPL | 27 | Graph, sorting, text, numeric algorithms |
-| **Total** | **38** | Active benchmarks |
+Use with the suite runner:
+```bash
+racket benchmarks/run-suite.rkt --suite all --config benchmarks/config/quick.sexp
+```
 
-All 38 benchmarks demonstrate meaningful parallel speedup (>1.5x at 8 workers).
+## Benchmark Reference
+
+### MPL Benchmarks (27)
+
+| Category | Benchmarks |
+|----------|-----------|
+| Graph | bfs, mis, msf, connectivity, triangle-count, centrality, convex-hull |
+| Sorting | integer-sort, merge-sort, samplesort, suffix-array |
+| Numeric | histogram, primes, fib, nqueens, mcss, subset-sum, bignum-add |
+| Text | tokens, word-count, grep, dedup, palindrome, parens |
+| Other | flatten, collect, shuffle |
+
+### Shootout Benchmarks (12)
+
+binary-trees, spectral-norm, fannkuch-redux, mandelbrot, k-nucleotide, regex-dna
+(Each has v1 and v2 parallel implementations)
+
+### Racket Benchmarks (3)
+
+- **bmbench** - Boyer-Moore majority voting
+- **richards** - Richards device scheduler
+- **rows1b** - Synthetic row processing workload
