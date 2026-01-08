@@ -45,8 +45,6 @@
 ;; - best: max sum of any contiguous subarray
 ;; - total: sum of all elements
 
-(define GRAIN 5000)
-
 ;; Singleton tuple for single element
 (define-syntax-rule (make-singleton v)
   (let ([vp (flmax v 0.0)])
@@ -61,54 +59,75 @@
           (flmax (flmax b1 b2) (fl+ r1 l2))
           (fl+ t1 t2)))
 
-;; Sequential reduction over a range - no allocation per element
+;; Sequential reduction over a range - fully inlined for performance
 (define (reduce-range data lo hi)
-  (if (= (- hi lo) 1)
-      (make-singleton (flvector-ref data lo))
-      (let loop ([i (add1 lo)]
-                 [l (let ([v (flvector-ref data lo)]) (flmax v 0.0))]
-                 [r (let ([v (flvector-ref data lo)]) (flmax v 0.0))]
-                 [b (let ([v (flvector-ref data lo)]) (flmax v 0.0))]
-                 [t (flvector-ref data lo)])
-        (if (>= i hi)
-            (values l r b t)
-            (let ([v (flvector-ref data i)])
-              (let-values ([(l2 r2 b2 t2) (make-singleton v)])
-                (let-values ([(nl nr nb nt) (combine-tuples l r b t l2 r2 b2 t2)])
-                  (loop (add1 i) nl nr nb nt))))))))
+  (define v0 (flvector-ref data lo))
+  (define v0p (flmax v0 0.0))
+  (let loop ([i (add1 lo)]
+             [l v0p]   ;; prefix: max sum starting from left edge
+             [r v0p]   ;; suffix: max sum ending at right edge
+             [b v0p]   ;; best: max sum of any contiguous subarray
+             [t v0])   ;; total: sum of all elements
+    (if (>= i hi)
+        (values l r b t)
+        (let* ([v (flvector-ref data i)]
+               [vp (flmax v 0.0)]
+               ;; Inline combine-tuples: (l, r, b, t) combine (vp, vp, vp, v)
+               ;; new-l = max(l, t + vp)
+               ;; new-r = max(vp, r + v)
+               ;; new-b = max(b, vp, r + vp)
+               ;; new-t = t + v
+               [nl (flmax l (fl+ t vp))]
+               [nr (flmax vp (fl+ r v))]
+               [nb (flmax (flmax b vp) (fl+ r vp))]
+               [nt (fl+ t v)])
+          (loop (add1 i) nl nr nb nt)))))
 
-;; Parallel MCSS using divide-and-conquer
+;; Parallel MCSS using flat chunking (like histogram)
+;; Spawns exactly `workers` threads instead of recursive divide-and-conquer
 (define (mcss-parallel data workers)
   (define n (flvector-length data))
   (when (= n 0) (error 'mcss "empty data"))
+  (mcss-parallel-impl data workers n))
 
+;; Parallel implementation
+(define (mcss-parallel-impl data workers n)
   (define pool (make-parallel-thread-pool workers))
+  (define chunk-size (quotient (+ n workers -1) workers))
 
-  ;; Divide-and-conquer parallel reduction
-  (define (par-reduce lo hi)
-    (cond
-      [(<= (- hi lo) GRAIN)
-       ;; Base case: sequential reduction
-       (reduce-range data lo hi)]
-      [else
-       ;; Parallel case: split and combine
-       (define mid (+ lo (quotient (- hi lo) 2)))
-       (define ch (make-channel))
-       (thread #:pool pool
-        (lambda ()
-          (let-values ([(l r b t) (par-reduce lo mid)])
-            (channel-put ch (vector l r b t)))))
-       (define-values (l2 r2 b2 t2) (par-reduce mid hi))
-       (define left-result (channel-get ch))
-       (define l1 (vector-ref left-result 0))
-       (define r1 (vector-ref left-result 1))
-       (define b1 (vector-ref left-result 2))
-       (define t1 (vector-ref left-result 3))
-       (combine-tuples l1 r1 b1 t1 l2 r2 b2 t2)]))
+  ;; Phase 1: Each worker reduces its chunk (exactly `workers` threads)
+  (define channels
+    (for/list ([w (in-range workers)])
+      (define start (* w chunk-size))
+      (define end (min (+ start chunk-size) n))
+      (if (>= start n)
+          #f
+          (let ([ch (make-channel)])
+            (thread #:pool pool
+              (λ ()
+                (define-values (l r b t) (reduce-range data start end))
+                (channel-put ch (vector l r b t))))
+            ch))))
 
-  (define-values (l r b t) (par-reduce 0 n))
+  (define results
+    (for/list ([ch channels] #:when ch)
+      (channel-get ch)))
+
   (parallel-thread-pool-close pool)
-  b)
+
+  ;; Phase 2: Combine chunk results sequentially (workers-1 combines)
+  (let loop ([results results])
+    (cond
+      [(= (length results) 1)
+       (define r (first results))
+       (vector-ref r 2)]  ;; Return 'best' from tuple
+      [else
+       (define r1 (first results))
+       (define r2 (second results))
+       (define-values (nl nr nb nt)
+         (combine-tuples (vector-ref r1 0) (vector-ref r1 1) (vector-ref r1 2) (vector-ref r1 3)
+                         (vector-ref r2 0) (vector-ref r2 1) (vector-ref r2 2) (vector-ref r2 3)))
+       (loop (cons (vector nl nr nb nt) (cddr results)))])))
 
 (module+ main
   (define n 1000000)

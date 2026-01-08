@@ -139,8 +139,8 @@
 ;; Parallel Brandes' Algorithm
 ;; ============================================================================
 
-(define GRAIN 1000)
 (define DENSE-THRESHOLD 0.05)
+(define MIN-FRONTIER-FOR-PARALLEL 500)  ;; Only spawn threads for frontiers larger than this
 
 (define (centrality-parallel g source workers)
   (define n (graph-n g))
@@ -159,9 +159,38 @@
   (define (should-use-dense? frontier-size)
     (> frontier-size (* DENSE-THRESHOLD n)))
 
+  ;; Sequential top-down BFS step (for small frontiers)
+  (define (top-down-step-sequential frontier)
+    (define next-list '())
+    (for ([u (in-vector frontier)])
+      (define d (unsafe-vector-ref dist u))
+      (define paths-u (unsafe-vector-ref num-paths u))
+      (define-values (adj adj-start adj-end) (graph-neighbors g u))
+      (for ([j (in-range adj-start adj-end)])
+        (define v (unsafe-vector-ref adj j))
+        (define old-dist (unsafe-vector-ref dist v))
+        (cond
+          [(fx= -1 old-dist)
+           (unsafe-vector-set! dist v (fx+ d 1))
+           (unsafe-vector-set! num-paths v paths-u)
+           (set! next-list (cons v next-list))]
+          [(fx= (fx+ d 1) old-dist)
+           (unsafe-vector-set! num-paths v
+             (fl+ (unsafe-vector-ref num-paths v) paths-u))])))
+    (list->vector next-list))
+
   ;; Parallel top-down BFS step
   (define (top-down-step frontier)
     (define frontier-size (vector-length frontier))
+
+    ;; Use sequential for small frontiers
+    (cond
+      [(< frontier-size MIN-FRONTIER-FOR-PARALLEL)
+       (top-down-step-sequential frontier)]
+      [else
+       (top-down-step-parallel frontier frontier-size)]))
+
+  (define (top-down-step-parallel frontier frontier-size)
     (define chunk-size (max 1 (quotient (+ frontier-size workers -1) workers)))
 
     (define channels
@@ -202,8 +231,33 @@
        (hash-set! seen v #t)
        v)))
 
+  ;; Sequential bottom-up BFS step (for small frontiers or single worker)
+  (define (bottom-up-step-sequential frontier)
+    (define in-frontier (make-vector n #f))
+    (for ([v (in-vector frontier)])
+      (unsafe-vector-set! in-frontier v #t))
+    (define next-list '())
+    (for ([v (in-range n)]
+          #:when (fx= -1 (unsafe-vector-ref dist v)))
+      (define-values (adj adj-start adj-end) (graph-neighbors g v))
+      (let/ec break
+        (for ([j (in-range adj-start adj-end)])
+          (define u (unsafe-vector-ref adj j))
+          (when (unsafe-vector-ref in-frontier u)
+            (define d (unsafe-vector-ref dist u))
+            (define paths-u (unsafe-vector-ref num-paths u))
+            (unsafe-vector-set! dist v (fx+ d 1))
+            (unsafe-vector-set! num-paths v paths-u)
+            (set! next-list (cons v next-list))
+            (break)))))
+    (list->vector next-list))
+
   ;; Parallel bottom-up BFS step
   (define (bottom-up-step frontier)
+    ;; Bottom-up always scans all vertices, so always use parallel for multi-worker
+    (bottom-up-step-parallel frontier))
+
+  (define (bottom-up-step-parallel frontier)
     (define in-frontier (make-vector n #f))
     (for ([v (in-vector frontier)])
       (unsafe-vector-set! in-frontier v #t))
@@ -246,35 +300,57 @@
             (top-down-step frontier)))
       (loop next)))
 
-  ;; Backward pass - parallel dependency computation
+  ;; Sequential backward pass (for single worker or small frontiers)
+  (define (backward-pass-sequential frontier)
+    (for ([v (in-vector frontier)])
+      (define d-v (unsafe-vector-ref dist v))
+      (define paths-v (unsafe-vector-ref num-paths v))
+      (define-values (adj adj-start adj-end) (graph-neighbors g v))
+      (for ([j (in-range adj-start adj-end)])
+        (define u (unsafe-vector-ref adj j))
+        (when (fx= (fx+ d-v 1) (unsafe-vector-ref dist u))
+          (define paths-u (unsafe-vector-ref num-paths u))
+          (define dep-u (unsafe-vector-ref dependency u))
+          (unsafe-vector-set! dependency v
+            (fl+ (unsafe-vector-ref dependency v)
+                 (fl* (fl/ paths-v paths-u) (fl+ 1.0 dep-u))))))))
+
+  ;; Parallel backward pass
+  (define (backward-pass-parallel frontier)
+    (define frontier-size (vector-length frontier))
+    (define chunk-size (max 1 (quotient (+ frontier-size workers -1) workers)))
+    (define channels
+      (for/list ([w (in-range workers)])
+        (define ch (make-channel))
+        (define start (fx* w chunk-size))
+        (define end (min (fx+ start chunk-size) frontier-size))
+        (thread #:pool pool
+          (λ ()
+            (for ([i (in-range start end)])
+              (define v (unsafe-vector-ref frontier i))
+              (define d-v (unsafe-vector-ref dist v))
+              (define paths-v (unsafe-vector-ref num-paths v))
+              (define-values (adj adj-start adj-end) (graph-neighbors g v))
+              (for ([j (in-range adj-start adj-end)])
+                (define u (unsafe-vector-ref adj j))
+                (when (fx= (fx+ d-v 1) (unsafe-vector-ref dist u))
+                  (define paths-u (unsafe-vector-ref num-paths u))
+                  (define dep-u (unsafe-vector-ref dependency u))
+                  ;; Note: This update may have races but the sum is still correct
+                  (unsafe-vector-set! dependency v
+                    (fl+ (unsafe-vector-ref dependency v)
+                         (fl* (fl/ paths-v paths-u) (fl+ 1.0 dep-u)))))))
+            (channel-put ch #t)))
+        ch))
+    (for-each channel-get channels))
+
+  ;; Backward pass - dependency computation
   (for ([frontier (in-list frontiers)])
     (define frontier-size (vector-length frontier))
     (when (> frontier-size 0)
-      (define chunk-size (max 1 (quotient (+ frontier-size workers -1) workers)))
-      (define channels
-        (for/list ([w (in-range workers)])
-          (define ch (make-channel))
-          (define start (fx* w chunk-size))
-          (define end (min (fx+ start chunk-size) frontier-size))
-          (thread #:pool pool
-            (λ ()
-              (for ([i (in-range start end)])
-                (define v (unsafe-vector-ref frontier i))
-                (define d-v (unsafe-vector-ref dist v))
-                (define paths-v (unsafe-vector-ref num-paths v))
-                (define-values (adj adj-start adj-end) (graph-neighbors g v))
-                (for ([j (in-range adj-start adj-end)])
-                  (define u (unsafe-vector-ref adj j))
-                  (when (fx= (fx+ d-v 1) (unsafe-vector-ref dist u))
-                    (define paths-u (unsafe-vector-ref num-paths u))
-                    (define dep-u (unsafe-vector-ref dependency u))
-                    ;; Note: This update may have races but the sum is still correct
-                    (unsafe-vector-set! dependency v
-                      (fl+ (unsafe-vector-ref dependency v)
-                           (fl* (fl/ paths-v paths-u) (fl+ 1.0 dep-u)))))))
-              (channel-put ch #t)))
-          ch))
-      (for-each channel-get channels)))
+      (if (< frontier-size MIN-FRONTIER-FOR-PARALLEL)
+          (backward-pass-sequential frontier)
+          (backward-pass-parallel frontier))))
 
   (parallel-thread-pool-close pool)
   dependency)
