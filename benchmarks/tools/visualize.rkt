@@ -15,8 +15,8 @@
 (define-runtime-path visualization-template-path
   "templates/visualization.html")
 
-;; Generate JSON data from benchmark summaries
-(define (summaries->json summaries)
+;; Generate JSON data from benchmark summaries and raw data
+(define (summaries->json summaries raw-lookup)
   (define grouped (group-by summary-name summaries))
   (hasheq
    'benchmarks
@@ -26,6 +26,8 @@
       'name (symbol->string bench-name)
       'variants
       (for/list ([s group])
+        (define key (list (summary-name s) (summary-variant s) (summary-worker s)))
+        (define raw-values (hash-ref raw-lookup key '()))
         (hasheq
          'variant (symbol->string (summary-variant s))
          'worker (summary-worker s)
@@ -35,7 +37,8 @@
          'real_min (summary-real-min s)
          'real_max (summary-real-max s)
          'cpu_mean (summary-cpu-mean s)
-         'gc_mean (summary-gc-mean s)))))))
+         'gc_mean (summary-gc-mean s)
+         'real_values raw-values))))))
 
 (define (generate-html json-data title)
   (define template (file->string visualization-template-path))
@@ -92,7 +95,15 @@
   (printf "Found ~a log file(s)\n" (length log-files))
 
   ;; Load and aggregate results
-  (define summaries (load-summaries (map path->string log-files)))
+  (define file-paths (map path->string log-files))
+  (define summaries (load-summaries file-paths))
+  (define raw-data-list (load-raw-data file-paths))
+
+  ;; Build a lookup table for raw values: (name variant worker) -> real-values
+  (define raw-lookup
+    (for/hash ([rd raw-data-list])
+      (values (list (raw-data-name rd) (raw-data-variant rd) (raw-data-worker rd))
+              (raw-data-real-values rd))))
 
   (when (null? summaries)
     (error 'run-and-visualize "No benchmark data found in log files"))
@@ -100,7 +111,7 @@
   (printf "Loaded ~a benchmark result(s)\n" (length summaries))
 
   ;; Generate JSON
-  (define json-hash (summaries->json summaries))
+  (define json-hash (summaries->json summaries raw-lookup))
   (define json-string (jsexpr->string json-hash))
 
   ;; Generate HTML

@@ -80,8 +80,10 @@
        (unsafe-vector-ref (graph-offsets g) v)))
 
 ;; ============================================================================
-;; Sequential Brandes' Algorithm
+;; Sequential Brandes' Algorithm (with direction optimization like parallel)
 ;; ============================================================================
+
+(define SEQ-DENSE-THRESHOLD 0.05)
 
 (define (centrality-sequential g source)
   (define n (graph-n g))
@@ -93,28 +95,60 @@
   (unsafe-vector-set! dist source 0)
   (unsafe-vector-set! num-paths source 1.0)
 
+  (define (should-use-dense? frontier-size)
+    (> frontier-size (* SEQ-DENSE-THRESHOLD n)))
+
+  ;; Top-down BFS step: for each frontier vertex, examine neighbors
+  (define (top-down-step frontier)
+    (define next-list '())
+    (for ([u (in-vector frontier)])
+      (define d (unsafe-vector-ref dist u))
+      (define paths-u (unsafe-vector-ref num-paths u))
+      (define-values (adj start end) (graph-neighbors g u))
+      (for ([j (in-range start end)])
+        (define v (unsafe-vector-ref adj j))
+        (cond
+          [(fx= -1 (unsafe-vector-ref dist v))
+           ;; First visit
+           (unsafe-vector-set! dist v (fx+ d 1))
+           (unsafe-vector-set! num-paths v paths-u)
+           (set! next-list (cons v next-list))]
+          [(fx= (fx+ d 1) (unsafe-vector-ref dist v))
+           ;; Another shortest path
+           (unsafe-vector-set! num-paths v
+             (fl+ (unsafe-vector-ref num-paths v) paths-u))])))
+    (list->vector next-list))
+
+  ;; Bottom-up BFS step: for each unvisited vertex, check if it has a frontier neighbor
+  (define (bottom-up-step frontier)
+    (define in-frontier (make-vector n #f))
+    (for ([v (in-vector frontier)])
+      (unsafe-vector-set! in-frontier v #t))
+    (define next-list '())
+    (for ([v (in-range n)]
+          #:when (fx= -1 (unsafe-vector-ref dist v)))
+      (define-values (adj adj-start adj-end) (graph-neighbors g v))
+      (let/ec break
+        (for ([j (in-range adj-start adj-end)])
+          (define u (unsafe-vector-ref adj j))
+          (when (unsafe-vector-ref in-frontier u)
+            (define d (unsafe-vector-ref dist u))
+            (define paths-u (unsafe-vector-ref num-paths u))
+            (unsafe-vector-set! dist v (fx+ d 1))
+            (unsafe-vector-set! num-paths v paths-u)
+            (set! next-list (cons v next-list))
+            (break)))))
+    (list->vector next-list))
+
   (define frontiers '())
   (let loop ([frontier (vector source)])
     (unless (fx= 0 (vector-length frontier))
       (set! frontiers (cons frontier frontiers))
-      (define next-list '())
-      (for ([u (in-vector frontier)])
-        (define d (unsafe-vector-ref dist u))
-        (define paths-u (unsafe-vector-ref num-paths u))
-        (define-values (adj start end) (graph-neighbors g u))
-        (for ([j (in-range start end)])
-          (define v (unsafe-vector-ref adj j))
-          (cond
-            [(fx= -1 (unsafe-vector-ref dist v))
-             ;; First visit
-             (unsafe-vector-set! dist v (fx+ d 1))
-             (unsafe-vector-set! num-paths v paths-u)
-             (set! next-list (cons v next-list))]
-            [(fx= (fx+ d 1) (unsafe-vector-ref dist v))
-             ;; Another shortest path
-             (unsafe-vector-set! num-paths v
-               (fl+ (unsafe-vector-ref num-paths v) paths-u))])))
-      (loop (list->vector next-list))))
+      (define next
+        (if (should-use-dense? (vector-length frontier))
+            (bottom-up-step frontier)
+            (top-down-step frontier)))
+      (loop next)))
 
   ;; Backward pass - compute dependencies
   (for ([frontier (in-list frontiers)])

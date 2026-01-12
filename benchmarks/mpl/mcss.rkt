@@ -23,32 +23,12 @@
       (flvector-set! data i (fl- (fl* 2.0 (random)) 1.0)))
     data))
 
-;; Sequential MCSS using Kadane's algorithm - O(n) time, O(1) space
-(define (mcss-sequential data)
-  (define n (flvector-length data))
-  (when (= n 0) (error 'mcss "empty data"))
-  (let loop ([i 1]
-             [max-so-far (flvector-ref data 0)]
-             [max-ending-here (flvector-ref data 0)])
-    (if (>= i n)
-        max-so-far
-        (let* ([v (flvector-ref data i)]
-               [new-max-ending (flmax v (fl+ max-ending-here v))]
-               [new-max-so-far (flmax max-so-far new-max-ending)])
-          (loop (add1 i) new-max-so-far new-max-ending)))))
-
-;; Parallel MCSS using divide-and-conquer reduction
-;; Matches MPL's SeqBasis.reduce approach
+;; 4-tuple reduction for MCSS
 ;; Tuple: (prefix, suffix, best, total)
 ;; - prefix: max sum starting from left edge
 ;; - suffix: max sum ending at right edge
 ;; - best: max sum of any contiguous subarray
 ;; - total: sum of all elements
-
-;; Singleton tuple for single element
-(define-syntax-rule (make-singleton v)
-  (let ([vp (flmax v 0.0)])
-    (values vp vp vp v)))
 
 ;; Combine two tuples - associative operation for parallel reduction
 ;; (l1, r1, b1, t1) combine (l2, r2, b2, t2) =
@@ -59,29 +39,54 @@
           (flmax (flmax b1 b2) (fl+ r1 l2))
           (fl+ t1 t2)))
 
-;; Sequential reduction over a range - fully inlined for performance
+;; Sequential reduction over a range - optimized two-pass algorithm
+;; Pass 1: left-to-right for total, prefix, and best
+;; Pass 2: right-to-left for suffix
 (define (reduce-range data lo hi)
-  (define v0 (flvector-ref data lo))
-  (define v0p (flmax v0 0.0))
-  (let loop ([i (add1 lo)]
-             [l v0p]   ;; prefix: max sum starting from left edge
-             [r v0p]   ;; suffix: max sum ending at right edge
-             [b v0p]   ;; best: max sum of any contiguous subarray
-             [t v0])   ;; total: sum of all elements
-    (if (>= i hi)
-        (values l r b t)
-        (let* ([v (flvector-ref data i)]
-               [vp (flmax v 0.0)]
-               ;; Inline combine-tuples: (l, r, b, t) combine (vp, vp, vp, v)
-               ;; new-l = max(l, t + vp)
-               ;; new-r = max(vp, r + v)
-               ;; new-b = max(b, vp, r + vp)
-               ;; new-t = t + v
-               [nl (flmax l (fl+ t vp))]
-               [nr (flmax vp (fl+ r v))]
-               [nb (flmax (flmax b vp) (fl+ r vp))]
-               [nt (fl+ t v)])
-          (loop (add1 i) nl nr nb nt)))))
+  (cond
+    [(= (- hi lo) 1)
+     ;; Single element case
+     (define v (flvector-ref data lo))
+     (define vp (flmax v 0.0))
+     (values vp vp vp v)]
+    [else
+     ;; Pass 1: left-to-right for total, prefix, and best
+     (define-values (total prefix best)
+       (let loop ([i lo]
+                  [running-sum 0.0]
+                  [prefix-max -inf.0]
+                  [kadane-ending 0.0]
+                  [kadane-best -inf.0])
+         (if (>= i hi)
+             (values running-sum (flmax prefix-max 0.0) (flmax kadane-best 0.0))
+             (let* ([v (flvector-ref data i)]
+                    [new-sum (fl+ running-sum v)]
+                    [new-prefix (flmax prefix-max new-sum)]
+                    [new-ending (flmax v (fl+ kadane-ending v))]
+                    [new-best (flmax kadane-best new-ending)])
+               (loop (add1 i) new-sum new-prefix new-ending new-best)))))
+
+     ;; Pass 2: right-to-left for suffix
+     (define suffix
+       (let loop ([i (sub1 hi)]
+                  [running-sum 0.0]
+                  [suffix-max -inf.0])
+         (if (< i lo)
+             (flmax suffix-max 0.0)
+             (let* ([v (flvector-ref data i)]
+                    [new-sum (fl+ running-sum v)]
+                    [new-suffix (flmax suffix-max new-sum)])
+               (loop (sub1 i) new-sum new-suffix)))))
+
+     (values prefix suffix best total)]))
+
+;; Sequential MCSS using same 4-tuple reduction as parallel
+;; Uses reduce-range over the entire array for fair comparison
+(define (mcss-sequential data)
+  (define n (flvector-length data))
+  (when (= n 0) (error 'mcss "empty data"))
+  (define-values (prefix suffix best total) (reduce-range data 0 n))
+  best)
 
 ;; Parallel MCSS using flat chunking (like histogram)
 ;; Spawns exactly `workers` threads instead of recursive divide-and-conquer

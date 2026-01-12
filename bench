@@ -1,313 +1,517 @@
-#!/bin/bash
-#
-# bench - Unified benchmark runner for parbench
-#
-# Usage:
-#   ./bench [SUITE] [OPTIONS]
-#
-# Suites:
-#   all         Run all benchmarks (default)
-#   mpl         MPL parallel benchmarks (27)
-#   shootout    Shootout benchmarks (12)
-#   racket      Racket benchmarks (3)
-#
-# Options:
-#   --quick             Quick smoke test mode (small sizes, fewer repeats)
-#   --cores N,M,...     Specific worker counts (comma-separated)
-#   --cores N-M         Range of worker counts (e.g., 1-8)
-#   --output DIR        Output directory (default: ./results)
-#   --no-html           Skip HTML report generation
-#   --list              List available benchmarks
-#   --dry-run           Show commands without executing
-#   --help              Show this help
-#
-# Examples:
-#   ./bench                     # Run all benchmarks with auto core sweep
-#   ./bench mpl                 # Just MPL benchmarks
-#   ./bench --quick             # Quick smoke test
-#   ./bench --cores 1,4,8       # Specific core counts
-#   ./bench mpl --cores 1-4     # MPL with cores 1,2,4
-#
+#!/usr/bin/env racket
+#lang racket
 
-set -e
+;; bench.rkt - Unified benchmark runner for parbench
+;;
+;; Usage:
+;;   racket bench.rkt [SUITE|BENCHMARK...] [OPTIONS]
+;;
+;; Suites:
+;;   all         Run all benchmarks (default)
+;;   mpl         MPL parallel benchmarks (27)
+;;   shootout    Shootout benchmarks (12)
+;;   racket      Racket benchmarks (3)
+;;
+;; Individual benchmarks can also be specified by name (e.g., fib, bmbench)
+;;
+;; Options:
+;;   --quick             Quick smoke test mode (small sizes, fewer repeats)
+;;   --cores N,M,...     Specific worker counts (comma-separated)
+;;   --cores N-M         Range of worker counts (e.g., 1-8)
+;;   --output DIR        Output base directory (default: ./results)
+;;   --update DIR        Update existing run directory (don't create new timestamp)
+;;   --no-html           Skip HTML report generation
+;;   --list              List available benchmarks
+;;   --dry-run           Show commands without executing
+;;   --help              Show this help
+;;
+;; Examples:
+;;   racket bench.rkt                     # Run all benchmarks with auto core sweep
+;;   racket bench.rkt mpl                 # Just MPL benchmarks
+;;   racket bench.rkt fib nqueens         # Just fib and nqueens benchmarks
+;;   racket bench.rkt --quick             # Quick smoke test
+;;   racket bench.rkt --cores 1,4,8       # Specific core counts
+;;   racket bench.rkt mpl --cores 1-4     # MPL with cores 1,2,4,4
+;;   racket bench.rkt --update results/20260109-160016  # Update existing run
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+(require racket/cmdline
+         racket/file
+         racket/path
+         racket/system
+         racket/list
+         racket/string
+         racket/date
+         json
+         "benchmarks/tools/analysis.rkt")
 
-# Defaults
-SUITE="all"
-OUTPUT_DIR="$SCRIPT_DIR/results"
-QUICK_MODE=false
-GENERATE_HTML=true
-DRY_RUN=false
-WORKER_COUNTS=""
+;; ============================================================================
+;; Benchmark Configurations
+;; ============================================================================
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
+;; MPL benchmarks: (name args...)
+(define mpl-benchmarks
+  '((histogram "--n" "200000000" "--repeat" "10")
+    (integer-sort "--n" "50000000" "--range" "10000" "--repeat" "10")
+    (bfs "--n" "8000000" "--graph-type" "grid" "--repeat" "10")
+    (convex-hull "--n" "2500000" "--repeat" "10")
+    (mis "--n" "1500000" "--repeat" "10")
+    (msf "--n" "120000" "--repeat" "10")
+    (suffix-array "--n" "600000" "--repeat" "10")
+    (primes "--n" "50000000" "--repeat" "10")
+    (merge-sort "--n" "5000000" "--repeat" "10")
+    (samplesort "--n" "2000000" "--repeat" "10")
+    (tokens "--size" "5000000" "--repeat" "10")
+    (nqueens "--n" "13" "--repeat" "10")
+    (dedup "--n" "5000000" "--unique" "500000" "--repeat" "10")
+    (word-count "--size" "40000000" "--repeat" "10")
+    (fib "--n" "42" "--threshold" "30" "--repeat" "10")
+    (shuffle "--n" "5000000" "--chunk-size" "500000" "--repeat" "10")
+    (grep "--lines" "2000000" "--repeat" "10")
+    (palindrome "--n" "500000000" "--repeat" "10")
+    (parens "--n" "150000000" "--repeat" "10")
+    (mcss "--n" "100000000" "--repeat" "10")
+    (flatten "--n" "600000" "--avg-size" "100" "--repeat" "10")
+    (collect "--n" "15000000" "--repeat" "10")
+    (bignum-add "--n" "50000000" "--chunk-size" "5000000" "--repeat" "10")
+    (subset-sum "--n" "28" "--goal" "10000" "--max-value" "100" "--repeat" "10")
+    (triangle-count "--n" "17000" "--edges" "1000000" "--repeat" "10")
+    (connectivity "--n" "2000000" "--edges" "8000000" "--repeat" "10")
+    (centrality "--n" "20000" "--edges" "100000" "--repeat" "10")))
 
-# Core detection
-detect_cores() {
-    if command -v nproc &> /dev/null; then
-        nproc
-    elif command -v sysctl &> /dev/null; then
-        sysctl -n hw.ncpu 2>/dev/null || echo 8
-    else
-        echo 8  # fallback
-    fi
-}
+;; Shootout benchmarks: (name args...)
+(define shootout-benchmarks
+  '((binary-trees "--n" "18" "--repeat" "10")
+    (binary-trees-v2 "--n" "18" "--repeat" "10")
+    (spectral-norm "--n" "3000" "--repeat" "10")
+    (spectral-norm-v2 "--n" "3000" "--repeat" "10")
+    (fannkuch-redux "--n" "11" "--repeat" "10")
+    (fannkuch-redux-v2 "--n" "11" "--repeat" "10")
+    (mandelbrot "--n" "4000" "--repeat" "10")
+    (mandelbrot-v2 "--n" "4000" "--repeat" "10")
+    (k-nucleotide "--n" "500000" "--repeat" "10")
+    (k-nucleotide-v2 "--n" "500000" "--repeat" "10")
+    (regex-dna "--n" "500000" "--repeat" "10")
+    (regex-dna-v2 "--n" "500000" "--repeat" "10")))
 
-# Generate default worker counts based on available cores
-default_worker_counts() {
-    local max_cores=$(detect_cores)
-    local counts="1"
-    for n in 2 4 6 8 12 16 24 32; do
-        if [ $n -le $max_cores ]; then
-            counts="$counts,$n"
-        fi
-    done
-    echo "$counts"
-}
+;; Racket benchmarks: (name args...)
+(define racket-benchmarks
+  '((bmbench "--n" "1000000" "--repeat" "10")
+    (richards "--iterations" "100" "--repeat" "10")
+    (rows1b "--rows" "2000000" "--chunk-size" "200000" "--repeat" "10")))
 
-# Parse range notation (e.g., 1-8) into comma-separated list
-parse_cores() {
-    local input="$1"
-    if [[ "$input" == *"-"* ]]; then
-        local start="${input%-*}"
-        local end="${input#*-}"
-        local result=""
-        for ((i=start; i<=end; i++)); do
-            # Only include common worker counts
-            if [[ $i -eq 1 || $i -eq 2 || $i -eq 4 || $i -eq 6 || $i -eq 8 || $i -eq 12 || $i -eq 16 || $i -eq 24 || $i -eq 32 ]]; then
-                if [ -z "$result" ]; then
-                    result="$i"
-                else
-                    result="$result,$i"
-                fi
-            fi
-        done
-        echo "$result"
-    elif [[ "$input" == "max" ]]; then
-        detect_cores
-    else
-        echo "$input"
-    fi
-}
+;; All benchmark names by suite
+(define mpl-names (map first mpl-benchmarks))
+(define shootout-names (map first shootout-benchmarks))
+(define racket-names (map first racket-benchmarks))
 
-# Show help
-show_help() {
-    sed -n '2,30p' "$0" | sed 's/^# //' | sed 's/^#//'
-    exit 0
-}
+;; ============================================================================
+;; Parameters
+;; ============================================================================
 
-# List benchmarks
-list_benchmarks() {
-    echo -e "${BOLD}Available benchmarks:${NC}"
-    echo ""
-    echo -e "${BLUE}MPL (27):${NC}"
-    echo "  histogram, integer-sort, bfs, convex-hull, mis, msf, suffix-array,"
-    echo "  primes, merge-sort, samplesort, tokens, nqueens, dedup, word-count,"
-    echo "  fib, shuffle, grep, palindrome, parens, mcss, flatten, collect,"
-    echo "  bignum-add, subset-sum, triangle-count, connectivity, centrality"
-    echo ""
-    echo -e "${BLUE}Shootout (12):${NC}"
-    echo "  binary-trees, binary-trees-v2, spectral-norm, spectral-norm-v2,"
-    echo "  fannkuch-redux, fannkuch-redux-v2, mandelbrot, mandelbrot-v2,"
-    echo "  k-nucleotide, k-nucleotide-v2, regex-dna, regex-dna-v2"
-    echo ""
-    echo -e "${BLUE}Racket (3):${NC}"
-    echo "  bmbench, richards, rows1b"
-    exit 0
-}
+(define quick-mode (make-parameter #f))
+(define dry-run-mode (make-parameter #f))
+(define generate-html (make-parameter #t))
 
-# Run a suite (without generating its own HTML - we'll generate combined report)
-run_suite() {
-    local suite="$1"
-    local log_dir="$2"
-    local workers="$3"
+;; ============================================================================
+;; Core Detection
+;; ============================================================================
 
-    echo -e "${BOLD}Running $suite benchmarks...${NC}"
-    echo "  Worker counts: $workers"
-    echo "  Log directory: $log_dir"
-    echo ""
+(define (detect-cores)
+  (with-handlers ([exn:fail? (λ (_) 8)])
+    (cond
+      [(find-executable-path "nproc")
+       (string->number (string-trim (with-output-to-string
+                                      (λ () (system "nproc")))))]
+      [(find-executable-path "sysctl")
+       (string->number (string-trim (with-output-to-string
+                                      (λ () (system "sysctl -n hw.ncpu")))))]
+      [else 8])))
 
-    local cmd=""
-    case "$suite" in
-        mpl)
-            cmd="racket $SCRIPT_DIR/run-mpl-benchmarks.rkt --log-dir $log_dir --output /dev/null --workers $workers"
-            ;;
-        shootout)
-            cmd="racket $SCRIPT_DIR/run-shootout-benchmarks.rkt --log-dir $log_dir --output /dev/null --workers $workers"
-            ;;
-        racket)
-            cmd="racket $SCRIPT_DIR/run-racket-benchmarks.rkt --log-dir $log_dir --output /dev/null --workers $workers"
-            ;;
-        *)
-            echo "Unknown suite: $suite"
-            exit 1
-            ;;
-    esac
+(define (default-worker-counts)
+  (define max-cores (detect-cores))
+  (filter (λ (n) (<= n max-cores))
+          '(1 2 4 6 8 12 16 24 32)))
 
-    if [ "$DRY_RUN" = true ]; then
-        echo "Would run: $cmd"
-    else
-        $cmd
-    fi
-}
+;; Parse worker counts from string
+;; Supports: "1,2,4,8" or "1-8" (range with common values)
+(define (parse-worker-counts str)
+  (cond
+    [(regexp-match #rx"^([0-9]+)-([0-9]+)$" str)
+     => (λ (m)
+          (define start (string->number (second m)))
+          (define end (string->number (third m)))
+          (filter (λ (n) (and (>= n start) (<= n end)))
+                  '(1 2 4 6 8 12 16 24 32)))]
+    [(equal? str "max")
+     (list (detect-cores))]
+    [else
+     (map string->number (string-split str ","))]))
 
-# Generate combined HTML report from all log files
-generate_combined_report() {
-    local output_dir="$1"
-    local html_file="$2"
-    local title="$3"
+;; ============================================================================
+;; Benchmark Discovery
+;; ============================================================================
 
-    echo -e "${BOLD}Generating combined HTML report...${NC}"
+;; Returns suite name ('mpl, 'shootout, 'racket) or #f
+(define (get-benchmark-suite name)
+  (define name-sym (if (symbol? name) name (string->symbol name)))
+  (cond
+    [(member name-sym mpl-names) 'mpl]
+    [(member name-sym shootout-names) 'shootout]
+    [(member name-sym racket-names) 'racket]
+    [else #f]))
 
-    # Create combined directory with symlinks to all .sexp files
-    local combined_dir="$output_dir/.combined"
-    rm -rf "$combined_dir"
-    mkdir -p "$combined_dir"
+;; Get benchmark config from suite
+(define (get-benchmark-config name)
+  (define name-sym (if (symbol? name) name (string->symbol name)))
+  (or (findf (λ (c) (eq? (first c) name-sym)) mpl-benchmarks)
+      (findf (λ (c) (eq? (first c) name-sym)) shootout-benchmarks)
+      (findf (λ (c) (eq? (first c) name-sym)) racket-benchmarks)))
 
-    # Find all .sexp files and create uniquely-named symlinks
-    local count=0
-    for sexp_file in $(find "$output_dir" -name "*.sexp" -type f 2>/dev/null | grep -v "/.combined/"); do
-        local base=$(basename "$sexp_file")
-        local dir=$(basename $(dirname "$sexp_file"))
-        ln -sf "$sexp_file" "$combined_dir/${dir}-${base}"
-        count=$((count + 1))
-    done
+;; Get benchmark directory
+(define (suite->directory suite)
+  (case suite
+    [(mpl) "mpl"]
+    [(shootout) "shootout"]
+    [(racket) "racket"]
+    [else (error 'suite->directory "unknown suite: ~a" suite)]))
 
-    if [ $count -eq 0 ]; then
-        echo "  No log files found to combine"
-        return
-    fi
+;; ============================================================================
+;; Listing
+;; ============================================================================
 
-    echo "  Found $count log file(s)"
+(define (list-benchmarks)
+  (printf "~nAvailable benchmarks:~n~n")
+  (printf "MPL (~a):~n" (length mpl-names))
+  (printf "  ~a~n~n" (string-join (map symbol->string mpl-names) ", "))
+  (printf "Shootout (~a):~n" (length shootout-names))
+  (printf "  ~a~n~n" (string-join (map symbol->string shootout-names) ", "))
+  (printf "Racket (~a):~n" (length racket-names))
+  (printf "  ~a~n~n" (string-join (map symbol->string racket-names) ", "))
+  (exit 0))
 
-    if [ "$DRY_RUN" = true ]; then
-        echo "Would run: racket $SCRIPT_DIR/benchmarks/tools/visualize.rkt --no-run --log-dir $combined_dir --output $html_file --title \"$title\""
-    else
-        racket "$SCRIPT_DIR/benchmarks/tools/visualize.rkt" \
-            --no-run \
-            --log-dir "$combined_dir" \
-            --output "$html_file" \
-            --title "$title"
-    fi
-}
+;; ============================================================================
+;; Benchmark Running
+;; ============================================================================
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        all|mpl|shootout|racket)
-            SUITE="$1"
-            shift
-            ;;
-        --quick|-q)
-            QUICK_MODE=true
-            shift
-            ;;
-        --cores|-c)
-            WORKER_COUNTS=$(parse_cores "$2")
-            shift 2
-            ;;
-        --no-html)
-            GENERATE_HTML=false
-            shift
-            ;;
-        --output|-o)
-            OUTPUT_DIR="$2"
-            shift 2
-            ;;
-        --list|-l)
-            list_benchmarks
-            ;;
-        --dry-run|-n)
-            DRY_RUN=true
-            shift
-            ;;
-        --help|-h)
-            show_help
-            ;;
-        -*)
-            echo "Unknown option: $1"
-            echo "Run './bench --help' for usage"
-            exit 1
-            ;;
-        *)
-            # Assume it's a suite name
-            SUITE="$1"
-            shift
-            ;;
-    esac
-done
+(define (run-benchmark name suite log-dir workers)
+  (define suite-dir (suite->directory suite))
+  (define benchmark-path (build-path "benchmarks" suite-dir (format "~a.rkt" name)))
+  (define log-path (build-path log-dir (format "~a.sexp" name)))
+  (define config (get-benchmark-config name))
+  (define args (if config (cdr config) '()))
 
-# Set defaults
-if [ -z "$WORKER_COUNTS" ]; then
-    WORKER_COUNTS=$(default_worker_counts)
-fi
+  (unless (file-exists? benchmark-path)
+    (error 'run-benchmark "Benchmark file not found: ~a" benchmark-path))
 
-# Quick mode uses fewer worker counts
-if [ "$QUICK_MODE" = true ]; then
-    WORKER_COUNTS="1,4"
-fi
+  ;; Delete existing log if present
+  (when (file-exists? log-path)
+    (delete-file log-path))
 
-# Create output directory
-mkdir -p "$OUTPUT_DIR"
+  (when (quick-mode)
+    (printf "  ~a~n" name)
+    (flush-output))
 
-# Print header
-echo ""
-echo -e "${BOLD}========================================${NC}"
-echo -e "${BOLD}  Parbench - Parallel Benchmark Suite${NC}"
-echo -e "${BOLD}========================================${NC}"
-echo ""
-echo "Suite:         $SUITE"
-echo "Worker counts: $WORKER_COUNTS"
-echo "Output dir:    $OUTPUT_DIR"
-echo "Quick mode:    $QUICK_MODE"
-echo "Detected cores: $(detect_cores)"
-echo ""
+  ;; Run sequential (workers=1) first
+  (define seq-cmd-args
+    (append args (list "--workers" "1" "--log" (path->string log-path))))
+  (when (dry-run-mode)
+    (printf "    Would run: racket ~a ~a~n" benchmark-path (string-join seq-cmd-args " ")))
+  (unless (dry-run-mode)
+    (define result
+      (if (quick-mode)
+          (parameterize ([current-output-port (open-output-nowhere)]
+                         [current-error-port (open-output-nowhere)])
+            (apply system* (find-executable-path "racket")
+                   (path->string benchmark-path) seq-cmd-args))
+          (begin
+            (unless (quick-mode) (printf "  Running ~a...~n" name))
+            (apply system* (find-executable-path "racket")
+                   (path->string benchmark-path) seq-cmd-args))))
+    (unless result
+      (eprintf "    Warning: ~a sequential failed~n" name)))
 
-# Track which suites we run for the report title
-SUITES_RUN=""
+  ;; Run parallel for each worker count (skip workers=1, already run as sequential)
+  (for ([w workers]
+        #:when (> w 1))
+    (define par-cmd-args
+      (append args (list "--workers" (number->string w)
+                         "--log" (path->string log-path)
+                         "--skip-sequential")))
+    (when (dry-run-mode)
+      (printf "    Would run: racket ~a ~a~n" benchmark-path (string-join par-cmd-args " ")))
+    (unless (dry-run-mode)
+      (define result
+        (if (quick-mode)
+            (parameterize ([current-output-port (open-output-nowhere)]
+                           [current-error-port (open-output-nowhere)])
+              (apply system* (find-executable-path "racket")
+                     (path->string benchmark-path) par-cmd-args))
+            (apply system* (find-executable-path "racket")
+                   (path->string benchmark-path) par-cmd-args)))
+      (unless result
+        (eprintf "    Warning: ~a with ~a workers failed~n" name w)))))
 
-# Run the appropriate suite(s)
-case "$SUITE" in
-    all)
-        run_suite "mpl" "$OUTPUT_DIR/mpl" "$WORKER_COUNTS"
-        echo ""
-        run_suite "shootout" "$OUTPUT_DIR/shootout" "$WORKER_COUNTS"
-        echo ""
-        run_suite "racket" "$OUTPUT_DIR/racket" "$WORKER_COUNTS"
-        SUITES_RUN="All Benchmarks"
-        ;;
-    mpl|shootout|racket)
-        run_suite "$SUITE" "$OUTPUT_DIR/$SUITE" "$WORKER_COUNTS"
-        SUITES_RUN="${SUITE^} Benchmarks"  # Capitalize first letter
-        ;;
-    *)
-        echo "Unknown suite: $SUITE"
-        echo "Available suites: all, mpl, shootout, racket"
-        exit 1
-        ;;
-esac
+(define (run-suite suite log-dir workers)
+  (printf "Running ~a benchmarks...~n" suite)
+  (unless (quick-mode)
+    (printf "  Worker counts: ~a~n" workers)
+    (printf "  Log directory: ~a~n~n" log-dir))
 
-# Generate combined HTML report
-if [ "$GENERATE_HTML" = true ]; then
-    echo ""
-    generate_combined_report "$OUTPUT_DIR" "$OUTPUT_DIR/results.html" "$SUITES_RUN"
-fi
+  (make-directory* log-dir)
 
-# Summary
-echo ""
-echo -e "${BOLD}========================================${NC}"
-echo -e "${GREEN}  Complete!${NC}"
-echo -e "${BOLD}========================================${NC}"
-echo ""
-echo "Results saved to: $OUTPUT_DIR/"
-if [ "$GENERATE_HTML" = true ]; then
-    echo ""
-    echo "View results:"
-    echo "  open $OUTPUT_DIR/results.html"
-fi
+  (define configs
+    (case suite
+      [(mpl) mpl-benchmarks]
+      [(shootout) shootout-benchmarks]
+      [(racket) racket-benchmarks]
+      [else (error 'run-suite "unknown suite: ~a" suite)]))
+
+  (define total (length configs))
+  (for ([config configs]
+        [i (in-naturals 1)])
+    (define name (first config))
+    (when (quick-mode)
+      (printf "  [~a/~a] " i total))
+    (run-benchmark name suite log-dir workers)))
+
+;; ============================================================================
+;; HTML Report Generation
+;; ============================================================================
+
+(define (generate-combined-report output-dir html-file title suite-dirs)
+  (unless (quick-mode)
+    (printf "Generating combined HTML report...~n"))
+
+  ;; Collect all .sexp files from specified suite directories
+  (define log-files
+    (apply append
+           (for/list ([dir suite-dirs]
+                      #:when (directory-exists? dir))
+             (for/list ([f (directory-list dir #:build? #t)]
+                        #:when (equal? (path-get-extension f) #".sexp"))
+               f))))
+
+  (cond
+    [(null? log-files)
+     (printf "  No log files found to combine~n")]
+
+    [(dry-run-mode)
+     (unless (quick-mode)
+       (printf "  Found ~a log file(s)~n" (length log-files)))
+     (printf "Would generate HTML report: ~a~n" html-file)]
+
+    [else
+     (unless (quick-mode)
+       (printf "  Found ~a log file(s)~n" (length log-files)))
+
+     ;; Load data
+     (define file-paths (map path->string log-files))
+     (define summaries (load-summaries file-paths))
+     (define raw-data-list (load-raw-data file-paths))
+
+     ;; Build lookup for raw values
+     (define raw-lookup
+       (for/hash ([rd raw-data-list])
+         (values (list (raw-data-name rd) (raw-data-variant rd) (raw-data-worker rd))
+                 (raw-data-real-values rd))))
+
+     ;; Generate JSON
+     (define json-data
+       (jsexpr->string
+        (hasheq
+         'benchmarks
+         (for/list ([bench-summaries (group-by summary-name summaries)])
+           (define bench-name (summary-name (first bench-summaries)))
+           (hasheq
+            'name (symbol->string bench-name)
+            'variants
+            (for/list ([s bench-summaries])
+              (define key (list (summary-name s) (summary-variant s) (summary-worker s)))
+              (define raw-values (hash-ref raw-lookup key '()))
+              (hasheq
+               'variant (symbol->string (summary-variant s))
+               'worker (summary-worker s)
+               'count (summary-count s)
+               'real_mean (summary-real-mean s)
+               'real_stddev (summary-real-stddev s)
+               'real_min (summary-real-min s)
+               'real_max (summary-real-max s)
+               'cpu_mean (summary-cpu-mean s)
+               'gc_mean (summary-gc-mean s)
+               'real_values raw-values)))))))
+
+     ;; Read template
+     (define template-path
+       (build-path "benchmarks" "tools" "templates" "visualization.html"))
+     (define template (file->string template-path))
+
+     ;; Generate HTML
+     (define html
+       (string-replace
+        (string-replace template "@@TITLE@@" title #:all? #t)
+        "@@DATA@@" json-data #:all? #t))
+
+     ;; Write output
+     (call-with-output-file html-file
+       #:exists 'replace
+       (λ (out) (write-string html out)))
+
+     (unless (quick-mode)
+       (printf "  Visualization saved to: ~a~n" html-file))]))
+
+;; ============================================================================
+;; Main
+;; ============================================================================
+
+(module+ main
+  ;; Configuration
+  (define output-base "results")
+  (define update-dir #f)
+  (define worker-counts-str #f)
+  (define requested (make-parameter '()))
+
+  ;; Parse command line
+  (define args
+    (command-line
+     #:program "bench"
+     #:once-each
+     [("--quick" "-q") "Quick smoke test mode"
+      (quick-mode #t)]
+     [("--cores" "-c") counts "Worker counts (comma-separated or range)"
+      (set! worker-counts-str counts)]
+     [("--output" "-o") dir "Output base directory"
+      (set! output-base dir)]
+     [("--update" "-u") dir "Update existing run directory"
+      (set! update-dir dir)]
+     [("--no-html") "Skip HTML report generation"
+      (generate-html #f)]
+     [("--list" "-l") "List available benchmarks"
+      (list-benchmarks)]
+     [("--dry-run" "-n") "Show commands without executing"
+      (dry-run-mode #t)]
+     #:args benchmarks
+     benchmarks))
+
+  ;; Parse worker counts
+  (define workers
+    (cond
+      [worker-counts-str (parse-worker-counts worker-counts-str)]
+      [(quick-mode) '(1 4)]
+      [else (default-worker-counts)]))
+
+  ;; Determine output directory
+  (define output-dir
+    (cond
+      [update-dir
+       (unless (directory-exists? update-dir)
+         (error 'bench "Update directory does not exist: ~a" update-dir))
+       update-dir]
+      [else
+       (define run-id (date->string (current-date) #t))
+       ;; Format: YYYYMMDD-HHMMSS
+       (define timestamp
+         (format "~a~a~a-~a~a~a"
+                 (date-year (current-date))
+                 (~r (date-month (current-date)) #:min-width 2 #:pad-string "0")
+                 (~r (date-day (current-date)) #:min-width 2 #:pad-string "0")
+                 (~r (date-hour (current-date)) #:min-width 2 #:pad-string "0")
+                 (~r (date-minute (current-date)) #:min-width 2 #:pad-string "0")
+                 (~r (date-second (current-date)) #:min-width 2 #:pad-string "0")))
+       (build-path output-base timestamp)]))
+
+  (make-directory* output-dir)
+
+  ;; Default to "all" if nothing specified
+  (define items
+    (if (null? args) '("all") args))
+
+  ;; Check if running suites or individual benchmarks
+  (define suites (filter (λ (x) (member x '("all" "mpl" "shootout" "racket"))) items))
+  (define benchmarks (filter (λ (x) (not (member x '("all" "mpl" "shootout" "racket")))) items))
+
+  (when (and (not (null? suites)) (not (null? benchmarks)))
+    (error 'bench "Cannot mix suite names (all, mpl, shootout, racket) with individual benchmark names"))
+
+  ;; Print header
+  (newline)
+  (if (quick-mode)
+      (printf "Parbench (quick mode)~n")
+      (begin
+        (printf "========================================~n")
+        (printf "  Parbench - Parallel Benchmark Suite~n")
+        (printf "========================================~n~n")
+        (printf "Benchmarks:    ~a~n" (string-join items " "))
+        (printf "Worker counts: ~a~n" workers)
+        (printf "Output dir:    ~a~n" output-dir)
+        (printf "Detected cores: ~a~n" (detect-cores))))
+  (newline)
+
+  ;; Track suite directories for HTML report
+  (define suite-dirs '())
+
+  (cond
+    ;; Running suites
+    [(not (null? suites))
+     (for ([item suites])
+       (case (string->symbol item)
+         [(all)
+          (run-suite 'mpl (build-path output-dir "mpl") workers)
+          (set! suite-dirs (cons (build-path output-dir "mpl") suite-dirs))
+          (newline)
+          (run-suite 'shootout (build-path output-dir "shootout") workers)
+          (set! suite-dirs (cons (build-path output-dir "shootout") suite-dirs))
+          (newline)
+          (run-suite 'racket (build-path output-dir "racket") workers)
+          (set! suite-dirs (cons (build-path output-dir "racket") suite-dirs))]
+         [(mpl shootout racket)
+          (define suite (string->symbol item))
+          (define dir (build-path output-dir item))
+          (run-suite suite dir workers)
+          (set! suite-dirs (cons dir suite-dirs))]))]
+
+    ;; Running individual benchmarks
+    [else
+     ;; Group by suite
+     (define grouped (make-hash))
+     (for ([bench benchmarks])
+       (define suite (get-benchmark-suite bench))
+       (unless suite
+         (error 'bench "Unknown benchmark: ~a~nRun 'racket bench.rkt --list' to see available benchmarks" bench))
+       (hash-update! grouped suite (λ (lst) (cons bench lst)) '()))
+
+     (for ([(suite bench-list) (in-hash grouped)])
+       (define dir (build-path output-dir (suite->directory suite)))
+       (make-directory* dir)
+       (printf "Running ~a benchmarks...~n" suite)
+       (for ([bench (reverse bench-list)])
+         (run-benchmark (string->symbol bench) suite dir workers))
+       (set! suite-dirs (cons dir suite-dirs)))])
+
+  ;; Generate HTML report
+  (when (generate-html)
+    (newline)
+    (define title
+      (cond
+        [(member "all" suites) "All Benchmarks"]
+        [(not (null? suites))
+         (string-join (map (λ (s) (format "~a Benchmarks" (string-titlecase s))) suites) " + ")]
+        [else
+         (format "Selected Benchmarks: ~a" (string-join benchmarks ", "))]))
+    (generate-combined-report output-dir
+                              (build-path output-dir "results.html")
+                              title
+                              (reverse suite-dirs)))
+
+  ;; Summary
+  (newline)
+  (if (quick-mode)
+      (printf "Done. Results: ~a/results.html~n" output-dir)
+      (begin
+        (printf "========================================~n")
+        (printf "  Complete!~n")
+        (printf "========================================~n~n")
+        (printf "Results saved to: ~a/~n" output-dir)
+        (when (generate-html)
+          (newline)
+          (printf "View results:~n")
+          (printf "  open ~a/results.html~n" output-dir)))))
