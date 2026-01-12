@@ -19,7 +19,7 @@ jobs:
           version: "9.0"
 
       - name: Install package dependencies
-        run: raco pkg install --auto --batch --no-docs --deps search-auto
+        run: raco pkg install --auto --batch --no-docs
 
       - name: Run RackUnit test suite
         run: raco test tests
