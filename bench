@@ -16,27 +16,29 @@
 ;;
 ;; Options:
 ;;   --quick, -q         Quick smoke test mode (3 iterations, limited cores)
-;;   --quiet             Suppress per-benchmark output
-;;   --no-save           Don't save results, just print summary table
+;;   --verbose, -v       Show detailed per-benchmark output
+;;   --save, -s          Save results to log files
+;;   --html              Generate HTML report (implies --save)
 ;;   --iterations, -i N  Number of iterations per benchmark (default: 10)
 ;;   --cores, -c N,M,... Specific worker counts (comma-separated)
 ;;   --cores, -c N-M     Range of worker counts (e.g., 1-8)
 ;;   --output, -o DIR    Output base directory (default: ./results)
-;;   --update, -u DIR    Update existing run directory (don't create new timestamp)
-;;   --no-html           Skip HTML report generation
+;;   --update, -u DIR    Update existing run directory (implies --save)
 ;;   --list, -l          List available benchmarks
 ;;   --dry-run, -n       Show commands without executing
 ;;   --help, -h          Show this help
 ;;
+;; By default, runs quietly without saving files, printing a summary table.
+;;
 ;; Examples:
-;;   ./bench                     # Run all benchmarks with auto core sweep
-;;   ./bench mpl                 # Just MPL benchmarks
-;;   ./bench fib nqueens         # Just fib and nqueens benchmarks
-;;   ./bench --quick             # Quick smoke test
-;;   ./bench --no-save fib       # Run fib and print summary (no files saved)
+;;   ./bench fib                 # Run fib, print summary
+;;   ./bench mpl                 # Run all MPL benchmarks
+;;   ./bench --quick             # Quick smoke test (3 iterations)
+;;   ./bench -v fib              # Verbose output
+;;   ./bench --save fib          # Save log files
+;;   ./bench --html fib          # Save logs and generate HTML report
 ;;   ./bench --iterations 5      # Run with 5 iterations each
 ;;   ./bench --cores 1,4,8       # Specific core counts
-;;   ./bench mpl --cores 1-4     # MPL with cores 1,2,4
 ;;   ./bench --update results/20260109-160016  # Update existing run
 
 (require racket/cmdline
@@ -114,10 +116,10 @@
 ;; ============================================================================
 
 (define quick-mode (make-parameter #f))
-(define quiet-mode (make-parameter #f))
+(define quiet-mode (make-parameter #t))   ; quiet by default
 (define dry-run-mode (make-parameter #f))
-(define generate-html (make-parameter #t))
-(define save-results (make-parameter #t))
+(define generate-html (make-parameter #f)) ; no HTML by default
+(define save-results (make-parameter #f))  ; no save by default
 (define iterations (make-parameter 10))
 
 ;; Results storage for --no-save mode: hash of (benchmark worker) -> (listof real-ms)
@@ -499,21 +501,22 @@
      #:once-each
      [("--quick" "-q") "Quick smoke test mode (fewer iterations, limited cores)"
       (quick-mode #t)]
-     [("--quiet") "Suppress per-benchmark output"
-      (quiet-mode #t)]
-     [("--no-save") "Don't save results, just print summary"
-      (save-results #f)
-      (generate-html #f)]
+     [("--verbose" "-v") "Show detailed per-benchmark output"
+      (quiet-mode #f)]
+     [("--save" "-s") "Save results to log files"
+      (save-results #t)]
+     [("--html") "Generate HTML report (implies --save)"
+      (save-results #t)
+      (generate-html #t)]
      [("--iterations" "-i") n "Number of iterations per benchmark (default: 10)"
       (set! iterations-str n)]
      [("--cores" "-c") counts "Worker counts (comma-separated or range)"
       (set! worker-counts-str counts)]
-     [("--output" "-o") dir "Output base directory"
+     [("--output" "-o") dir "Output base directory (default: ./results)"
       (set! output-base dir)]
-     [("--update" "-u") dir "Update existing run directory"
-      (set! update-dir dir)]
-     [("--no-html") "Skip HTML report generation"
-      (generate-html #f)]
+     [("--update" "-u") dir "Update existing run directory (implies --save)"
+      (set! update-dir dir)
+      (save-results #t)]
      [("--list" "-l") "List available benchmarks"
       (list-benchmarks)]
      [("--dry-run" "-n") "Show commands without executing"
@@ -573,17 +576,18 @@
     [(quick-mode)
      (printf "Parbench (quick mode)~n")]
     [(quiet-mode)
+     ;; Default quiet mode - minimal header
      (printf "Parbench~n")]
-    [(not (save-results))
-     (printf "Parbench (no-save mode)~n")]
     [else
+     ;; Verbose mode - show full details
      (printf "========================================~n")
      (printf "  Parbench - Parallel Benchmark Suite~n")
      (printf "========================================~n~n")
      (printf "Benchmarks:    ~a~n" (string-join items " "))
      (printf "Iterations:    ~a~n" (iterations))
      (printf "Worker counts: ~a~n" workers)
-     (printf "Output dir:    ~a~n" output-dir)
+     (when (save-results)
+       (printf "Output dir:    ~a~n" output-dir))
      (printf "Detected cores: ~a~n" (detect-cores))])
   (newline)
 
