@@ -1,10 +1,10 @@
 #!/usr/bin/env racket
 #lang racket
 
-;; bench.rkt - Unified benchmark runner for parbench
+;; bench - Unified benchmark runner for parbench
 ;;
 ;; Usage:
-;;   racket bench.rkt [SUITE|BENCHMARK...] [OPTIONS]
+;;   ./bench [SUITE|BENCHMARK...] [OPTIONS]
 ;;
 ;; Suites:
 ;;   all         Run all benchmarks (default)
@@ -15,24 +15,27 @@
 ;; Individual benchmarks can also be specified by name (e.g., fib, bmbench)
 ;;
 ;; Options:
-;;   --quick             Quick smoke test mode (small sizes, fewer repeats)
-;;   --cores N,M,...     Specific worker counts (comma-separated)
-;;   --cores N-M         Range of worker counts (e.g., 1-8)
-;;   --output DIR        Output base directory (default: ./results)
-;;   --update DIR        Update existing run directory (don't create new timestamp)
+;;   --quick, -q         Quick smoke test mode (3 iterations, limited cores)
+;;   --quiet             Suppress per-benchmark output
+;;   --iterations, -i N  Number of iterations per benchmark (default: 10)
+;;   --cores, -c N,M,... Specific worker counts (comma-separated)
+;;   --cores, -c N-M     Range of worker counts (e.g., 1-8)
+;;   --output, -o DIR    Output base directory (default: ./results)
+;;   --update, -u DIR    Update existing run directory (don't create new timestamp)
 ;;   --no-html           Skip HTML report generation
-;;   --list              List available benchmarks
-;;   --dry-run           Show commands without executing
-;;   --help              Show this help
+;;   --list, -l          List available benchmarks
+;;   --dry-run, -n       Show commands without executing
+;;   --help, -h          Show this help
 ;;
 ;; Examples:
-;;   racket bench.rkt                     # Run all benchmarks with auto core sweep
-;;   racket bench.rkt mpl                 # Just MPL benchmarks
-;;   racket bench.rkt fib nqueens         # Just fib and nqueens benchmarks
-;;   racket bench.rkt --quick             # Quick smoke test
-;;   racket bench.rkt --cores 1,4,8       # Specific core counts
-;;   racket bench.rkt mpl --cores 1-4     # MPL with cores 1,2,4,4
-;;   racket bench.rkt --update results/20260109-160016  # Update existing run
+;;   ./bench                     # Run all benchmarks with auto core sweep
+;;   ./bench mpl                 # Just MPL benchmarks
+;;   ./bench fib nqueens         # Just fib and nqueens benchmarks
+;;   ./bench --quick             # Quick smoke test
+;;   ./bench --iterations 5      # Run with 5 iterations each
+;;   ./bench --cores 1,4,8       # Specific core counts
+;;   ./bench mpl --cores 1-4     # MPL with cores 1,2,4
+;;   ./bench --update results/20260109-160016  # Update existing run
 
 (require racket/cmdline
          racket/file
@@ -50,54 +53,54 @@
 
 ;; MPL benchmarks: (name args...)
 (define mpl-benchmarks
-  '((histogram "--n" "200000000" "--repeat" "10")
-    (integer-sort "--n" "50000000" "--range" "10000" "--repeat" "10")
-    (bfs "--n" "8000000" "--graph-type" "grid" "--repeat" "10")
-    (convex-hull "--n" "2500000" "--repeat" "10")
-    (mis "--n" "1500000" "--repeat" "10")
-    (msf "--n" "120000" "--repeat" "10")
-    (suffix-array "--n" "600000" "--repeat" "10")
-    (primes "--n" "50000000" "--repeat" "10")
-    (merge-sort "--n" "5000000" "--repeat" "10")
-    (samplesort "--n" "2000000" "--repeat" "10")
-    (tokens "--size" "5000000" "--repeat" "10")
-    (nqueens "--n" "13" "--repeat" "10")
-    (dedup "--n" "5000000" "--unique" "500000" "--repeat" "10")
-    (word-count "--size" "40000000" "--repeat" "10")
-    (fib "--n" "42" "--threshold" "30" "--repeat" "10")
-    (shuffle "--n" "5000000" "--chunk-size" "500000" "--repeat" "10")
-    (grep "--lines" "2000000" "--repeat" "10")
-    (palindrome "--n" "500000000" "--repeat" "10")
-    (parens "--n" "150000000" "--repeat" "10")
-    (mcss "--n" "100000000" "--repeat" "10")
-    (flatten "--n" "600000" "--avg-size" "100" "--repeat" "10")
-    (collect "--n" "15000000" "--repeat" "10")
-    (bignum-add "--n" "50000000" "--chunk-size" "5000000" "--repeat" "10")
-    (subset-sum "--n" "28" "--goal" "10000" "--max-value" "100" "--repeat" "10")
-    (triangle-count "--n" "17000" "--edges" "1000000" "--repeat" "10")
-    (connectivity "--n" "2000000" "--edges" "8000000" "--repeat" "10")
-    (centrality "--n" "20000" "--edges" "100000" "--repeat" "10")))
+  '((histogram "--n" "200000000")
+    (integer-sort "--n" "50000000" "--range" "10000")
+    (bfs "--n" "8000000" "--graph-type" "grid")
+    (convex-hull "--n" "2500000")
+    (mis "--n" "1500000")
+    (msf "--n" "120000")
+    (suffix-array "--n" "600000")
+    (primes "--n" "50000000")
+    (merge-sort "--n" "5000000")
+    (samplesort "--n" "2000000")
+    (tokens "--size" "5000000")
+    (nqueens "--n" "13")
+    (dedup "--n" "5000000" "--unique" "500000")
+    (word-count "--size" "40000000")
+    (fib "--n" "42" "--threshold" "30")
+    (shuffle "--n" "5000000" "--chunk-size" "500000")
+    (grep "--lines" "2000000")
+    (palindrome "--n" "500000000")
+    (parens "--n" "150000000")
+    (mcss "--n" "100000000")
+    (flatten "--n" "600000" "--avg-size" "100")
+    (collect "--n" "15000000")
+    (bignum-add "--n" "50000000" "--chunk-size" "5000000")
+    (subset-sum "--n" "28" "--goal" "10000" "--max-value" "100")
+    (triangle-count "--n" "17000" "--edges" "1000000")
+    (connectivity "--n" "2000000" "--edges" "8000000")
+    (centrality "--n" "20000" "--edges" "100000")))
 
 ;; Shootout benchmarks: (name args...)
 (define shootout-benchmarks
-  '((binary-trees "--n" "18" "--repeat" "10")
-    (binary-trees-v2 "--n" "18" "--repeat" "10")
-    (spectral-norm "--n" "3000" "--repeat" "10")
-    (spectral-norm-v2 "--n" "3000" "--repeat" "10")
-    (fannkuch-redux "--n" "11" "--repeat" "10")
-    (fannkuch-redux-v2 "--n" "11" "--repeat" "10")
-    (mandelbrot "--n" "4000" "--repeat" "10")
-    (mandelbrot-v2 "--n" "4000" "--repeat" "10")
-    (k-nucleotide "--n" "500000" "--repeat" "10")
-    (k-nucleotide-v2 "--n" "500000" "--repeat" "10")
-    (regex-dna "--n" "500000" "--repeat" "10")
-    (regex-dna-v2 "--n" "500000" "--repeat" "10")))
+  '((binary-trees "--n" "18")
+    (binary-trees-v2 "--n" "18")
+    (spectral-norm "--n" "3000")
+    (spectral-norm-v2 "--n" "3000")
+    (fannkuch-redux "--n" "11")
+    (fannkuch-redux-v2 "--n" "11")
+    (mandelbrot "--n" "4000")
+    (mandelbrot-v2 "--n" "4000")
+    (k-nucleotide "--n" "500000")
+    (k-nucleotide-v2 "--n" "500000")
+    (regex-dna "--n" "500000")
+    (regex-dna-v2 "--n" "500000")))
 
 ;; Racket benchmarks: (name args...)
 (define racket-benchmarks
-  '((bmbench "--n" "1000000" "--repeat" "10")
-    (richards "--iterations" "100" "--repeat" "10")
-    (rows1b "--rows" "2000000" "--chunk-size" "200000" "--repeat" "10")))
+  '((bmbench "--n" "1000000")
+    (richards "--iterations" "100")
+    (rows1b "--rows" "2000000" "--chunk-size" "200000")))
 
 ;; All benchmark names by suite
 (define mpl-names (map first mpl-benchmarks))
@@ -109,8 +112,10 @@
 ;; ============================================================================
 
 (define quick-mode (make-parameter #f))
+(define quiet-mode (make-parameter #f))
 (define dry-run-mode (make-parameter #f))
 (define generate-html (make-parameter #t))
+(define iterations (make-parameter 10))
 
 ;; ============================================================================
 ;; Core Detection
@@ -198,7 +203,9 @@
   (define benchmark-path (build-path "benchmarks" suite-dir (format "~a.rkt" name)))
   (define log-path (build-path log-dir (format "~a.sexp" name)))
   (define config (get-benchmark-config name))
-  (define args (if config (cdr config) '()))
+  (define base-args (if config (cdr config) '()))
+  ;; Add --repeat with iterations count
+  (define args (append base-args (list "--repeat" (number->string (iterations)))))
 
   (unless (file-exists? benchmark-path)
     (error 'run-benchmark "Benchmark file not found: ~a" benchmark-path))
@@ -207,7 +214,7 @@
   (when (file-exists? log-path)
     (delete-file log-path))
 
-  (when (quick-mode)
+  (when (or (quick-mode) (quiet-mode))
     (printf "  ~a~n" name)
     (flush-output))
 
@@ -218,13 +225,13 @@
     (printf "    Would run: racket ~a ~a~n" benchmark-path (string-join seq-cmd-args " ")))
   (unless (dry-run-mode)
     (define result
-      (if (quick-mode)
+      (if (or (quick-mode) (quiet-mode))
           (parameterize ([current-output-port (open-output-nowhere)]
                          [current-error-port (open-output-nowhere)])
             (apply system* (find-executable-path "racket")
                    (path->string benchmark-path) seq-cmd-args))
           (begin
-            (unless (quick-mode) (printf "  Running ~a...~n" name))
+            (printf "  Running ~a...~n" name)
             (apply system* (find-executable-path "racket")
                    (path->string benchmark-path) seq-cmd-args))))
     (unless result
@@ -241,7 +248,7 @@
       (printf "    Would run: racket ~a ~a~n" benchmark-path (string-join par-cmd-args " ")))
     (unless (dry-run-mode)
       (define result
-        (if (quick-mode)
+        (if (or (quick-mode) (quiet-mode))
             (parameterize ([current-output-port (open-output-nowhere)]
                            [current-error-port (open-output-nowhere)])
               (apply system* (find-executable-path "racket")
@@ -253,7 +260,7 @@
 
 (define (run-suite suite log-dir workers)
   (printf "Running ~a benchmarks...~n" suite)
-  (unless (quick-mode)
+  (unless (or (quick-mode) (quiet-mode))
     (printf "  Worker counts: ~a~n" workers)
     (printf "  Log directory: ~a~n~n" log-dir))
 
@@ -270,7 +277,7 @@
   (for ([config configs]
         [i (in-naturals 1)])
     (define name (first config))
-    (when (quick-mode)
+    (when (or (quick-mode) (quiet-mode))
       (printf "  [~a/~a] " i total))
     (run-benchmark name suite log-dir workers)))
 
@@ -279,7 +286,7 @@
 ;; ============================================================================
 
 (define (generate-combined-report output-dir html-file title suite-dirs)
-  (unless (quick-mode)
+  (unless (or (quick-mode) (quiet-mode))
     (printf "Generating combined HTML report...~n"))
 
   ;; Collect all .sexp files from specified suite directories
@@ -296,12 +303,12 @@
      (printf "  No log files found to combine~n")]
 
     [(dry-run-mode)
-     (unless (quick-mode)
+     (unless (or (quick-mode) (quiet-mode))
        (printf "  Found ~a log file(s)~n" (length log-files)))
      (printf "Would generate HTML report: ~a~n" html-file)]
 
     [else
-     (unless (quick-mode)
+     (unless (or (quick-mode) (quiet-mode))
        (printf "  Found ~a log file(s)~n" (length log-files)))
 
      ;; Load data
@@ -356,7 +363,7 @@
        #:exists 'replace
        (λ (out) (write-string html out)))
 
-     (unless (quick-mode)
+     (unless (or (quick-mode) (quiet-mode))
        (printf "  Visualization saved to: ~a~n" html-file))]))
 
 ;; ============================================================================
@@ -370,13 +377,19 @@
   (define worker-counts-str #f)
   (define requested (make-parameter '()))
 
+  (define iterations-str #f)
+
   ;; Parse command line
   (define args
     (command-line
      #:program "bench"
      #:once-each
-     [("--quick" "-q") "Quick smoke test mode"
+     [("--quick" "-q") "Quick smoke test mode (fewer iterations, limited cores)"
       (quick-mode #t)]
+     [("--quiet") "Suppress per-benchmark output"
+      (quiet-mode #t)]
+     [("--iterations" "-i") n "Number of iterations per benchmark (default: 10)"
+      (set! iterations-str n)]
      [("--cores" "-c") counts "Worker counts (comma-separated or range)"
       (set! worker-counts-str counts)]
      [("--output" "-o") dir "Output base directory"
@@ -391,6 +404,11 @@
       (dry-run-mode #t)]
      #:args benchmarks
      benchmarks))
+
+  ;; Set iterations (quick mode uses 3 by default)
+  (cond
+    [iterations-str (iterations (string->number iterations-str))]
+    [(quick-mode) (iterations 3)])
 
   ;; Parse worker counts
   (define workers
@@ -434,16 +452,20 @@
 
   ;; Print header
   (newline)
-  (if (quick-mode)
-      (printf "Parbench (quick mode)~n")
-      (begin
-        (printf "========================================~n")
-        (printf "  Parbench - Parallel Benchmark Suite~n")
-        (printf "========================================~n~n")
-        (printf "Benchmarks:    ~a~n" (string-join items " "))
-        (printf "Worker counts: ~a~n" workers)
-        (printf "Output dir:    ~a~n" output-dir)
-        (printf "Detected cores: ~a~n" (detect-cores))))
+  (cond
+    [(quick-mode)
+     (printf "Parbench (quick mode)~n")]
+    [(quiet-mode)
+     (printf "Parbench~n")]
+    [else
+     (printf "========================================~n")
+     (printf "  Parbench - Parallel Benchmark Suite~n")
+     (printf "========================================~n~n")
+     (printf "Benchmarks:    ~a~n" (string-join items " "))
+     (printf "Iterations:    ~a~n" (iterations))
+     (printf "Worker counts: ~a~n" workers)
+     (printf "Output dir:    ~a~n" output-dir)
+     (printf "Detected cores: ~a~n" (detect-cores))])
   (newline)
 
   ;; Track suite directories for HTML report
@@ -504,14 +526,15 @@
 
   ;; Summary
   (newline)
-  (if (quick-mode)
-      (printf "Done. Results: ~a/results.html~n" output-dir)
-      (begin
-        (printf "========================================~n")
-        (printf "  Complete!~n")
-        (printf "========================================~n~n")
-        (printf "Results saved to: ~a/~n" output-dir)
-        (when (generate-html)
-          (newline)
-          (printf "View results:~n")
-          (printf "  open ~a/results.html~n" output-dir)))))
+  (cond
+    [(or (quick-mode) (quiet-mode))
+     (printf "Done. Results: ~a/results.html~n" output-dir)]
+    [else
+     (printf "========================================~n")
+     (printf "  Complete!~n")
+     (printf "========================================~n~n")
+     (printf "Results saved to: ~a/~n" output-dir)
+     (when (generate-html)
+       (newline)
+       (printf "View results:~n")
+       (printf "  open ~a/results.html~n" output-dir))]))
