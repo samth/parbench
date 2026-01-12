@@ -2,23 +2,26 @@
 
 ## Quick Start
 
-The simplest way to run benchmarks is with the unified `./bench` command:
+The simplest way to run benchmarks is with `raco parbench` (or equivalently `./bench`):
 
 ```bash
-./bench fib          # Run fib benchmark, print summary table
-./bench mpl          # Run all MPL benchmarks (27)
-./bench shootout     # Run Shootout benchmarks (6)
-./bench racket       # Run Racket benchmarks (3)
-./bench --quick      # Quick smoke test (3 iterations)
-./bench -v fib       # Verbose output
-./bench --save fib   # Save log files
-./bench --html fib   # Save logs and generate HTML report
-./bench --iterations 5  # Set iteration count
-./bench --cores 1,4,8   # Specific core counts
-./bench --help       # Full options
+# First install the package to enable raco parbench
+raco pkg install --link .
+
+raco parbench fib          # Run fib benchmark, print summary table
+raco parbench mpl          # Run all MPL benchmarks (27)
+raco parbench shootout     # Run Shootout benchmarks (6)
+raco parbench racket       # Run Racket benchmarks (3)
+raco parbench --quick      # Quick smoke test (3 iterations)
+raco parbench -v fib       # Verbose output
+raco parbench --save fib   # Save log files
+raco parbench --html fib   # Save logs and generate HTML report
+raco parbench --iterations 5  # Set iteration count
+raco parbench --cores 1,4,8   # Specific core counts
+raco parbench --help       # Full options
 ```
 
-By default, `./bench` runs quietly and prints a summary table without saving files.
+By default, `raco parbench` runs quietly and prints a summary table without saving files.
 
 ## Suite Runners
 

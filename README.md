@@ -5,45 +5,49 @@ A comprehensive benchmarking suite for evaluating parallel performance in Racket
 ## Quick Start
 
 ```bash
+# Install the package (enables raco parbench command)
+raco pkg install --link .
+
 # Run a benchmark (prints summary table)
-./bench fib
+raco parbench fib
+# Or equivalently: ./bench fib
 
 # Run specific suite
-./bench mpl          # 27 MPL parallel benchmarks
-./bench shootout     # 6 Shootout benchmarks
-./bench racket       # 3 Racket benchmarks
+raco parbench mpl          # 27 MPL parallel benchmarks
+raco parbench shootout     # 6 Shootout benchmarks
+raco parbench racket       # 3 Racket benchmarks
 
 # Quick smoke test (3 iterations)
-./bench --quick
+raco parbench --quick
 
 # Verbose output
-./bench -v fib
+raco parbench -v fib
 
 # Save results to log files
-./bench --save fib
+raco parbench --save fib
 
 # Save logs and generate HTML report
-./bench --html fib
+raco parbench --html fib
 
 # Set number of iterations
-./bench --iterations 5 fib
+raco parbench --iterations 5 fib
 
 # Specific core counts
-./bench --cores 1,4,8
-./bench mpl --cores 1-8
+raco parbench --cores 1,4,8
+raco parbench mpl --cores 1-8
 
 # View options
-./bench --help
-./bench --list
+raco parbench --help
+raco parbench --list
 ```
 
-By default, `./bench` runs quietly and prints a summary table without saving files.
+By default, `raco parbench` runs quietly and prints a summary table without saving files.
 Use `--save` to save log files or `--html` to also generate HTML reports.
 
 ### Example Output
 
 ```
-$ ./bench --quick fib
+$ raco parbench --quick fib
 Parbench (quick mode)
 
 Running mpl benchmarks...
