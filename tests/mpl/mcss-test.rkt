@@ -13,7 +13,7 @@
 ;; Test cases - use flvector instead of vector
 (test-mcss (flvector -2.0 1.0 -3.0 4.0 -1.0 2.0 1.0 -5.0 4.0) 6.0)  ; [4,-1,2,1]
 (test-mcss (flvector 1.0 2.0 3.0) 6.0)  ; All positive
-(test-mcss (flvector -1.0 -2.0 -3.0) -1.0)  ; All negative (best is single element)
+(test-mcss (flvector -1.0 -2.0 -3.0) 0.0)  ; All negative (empty subsequence allowed per MPL)
 
 ;; Test sequential vs parallel equivalence
 (define test-data (generate-random-data 1000 42))
