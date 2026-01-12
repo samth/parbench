@@ -249,31 +249,26 @@
 ;; Benchmark Running
 ;; ============================================================================
 
-;; Run a single benchmark invocation and optionally capture output
+;; Run a single benchmark invocation, always capturing output for summary
 (define (run-benchmark-once benchmark-path cmd-args name workers suppress-output?)
   (cond
     [(dry-run-mode)
      (printf "    Would run: racket ~a ~a~n" benchmark-path (string-join cmd-args " "))
      #t]
-    [(save-results)
-     ;; Normal mode: run and optionally suppress output
-     (if suppress-output?
-         (parameterize ([current-output-port (open-output-nowhere)]
-                        [current-error-port (open-output-nowhere)])
-           (apply system* (find-executable-path "racket")
-                  (path->string benchmark-path) cmd-args))
-         (apply system* (find-executable-path "racket")
-                (path->string benchmark-path) cmd-args))]
     [else
-     ;; No-save mode: capture stdout, parse results
+     ;; Always capture stdout for summary table
      (define output-str
        (with-output-to-string
          (λ ()
            (parameterize ([current-error-port (open-output-nowhere)])
              (apply system* (find-executable-path "racket")
                     (path->string benchmark-path) cmd-args)))))
+     ;; Parse and store results for summary
      (define real-ms-values (parse-benchmark-output output-str))
      (store-result! name workers real-ms-values)
+     ;; Optionally display output
+     (unless suppress-output?
+       (display output-str))
      (not (null? real-ms-values))]))
 
 (define (run-benchmark name suite log-dir workers)
@@ -649,22 +644,16 @@
                               title
                               (reverse suite-dirs)))
 
-  ;; Print results summary (for --no-save mode)
-  (when (not (save-results))
+  ;; Always print results summary (unless dry-run)
+  (unless (dry-run-mode)
     (print-results-summary workers))
 
-  ;; Summary
+  ;; Show file location if saving
   (when (save-results)
-    (newline)
     (cond
       [(or (quick-mode) (quiet-mode))
-       (printf "Done. Results: ~a/results.html~n" output-dir)]
+       (printf "Results: ~a/results.html~n" output-dir)]
       [else
-       (printf "========================================~n")
-       (printf "  Complete!~n")
-       (printf "========================================~n~n")
        (printf "Results saved to: ~a/~n" output-dir)
        (when (generate-html)
-         (newline)
-         (printf "View results:~n")
-         (printf "  open ~a/results.html~n" output-dir))])))
+         (printf "View: open ~a/results.html~n" output-dir))])))
