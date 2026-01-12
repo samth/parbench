@@ -115,7 +115,7 @@ raco test tests/
 ## Documentation
 
 - **[BENCHMARKS.md](BENCHMARKS.md)** - Detailed usage guide and CLI reference
-- **[PERFORMANCE.md](PERFORMANCE.md)** - Performance analysis and findings
+- **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** - Performance analysis and findings
 - **[CLAUDE.md](CLAUDE.md)** - AI assistant guidelines
 
 ## Repository Structure
@@ -131,6 +131,7 @@ benchmarks/
   tools/              # Analysis and visualization
   config/             # Configuration files
 tests/                # RackUnit test suite
+docs/                 # Additional documentation and analysis
 ```
 
 ## License
