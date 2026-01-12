@@ -17,6 +17,7 @@
 ;; Options:
 ;;   --quick, -q         Quick smoke test mode (3 iterations, limited cores)
 ;;   --quiet             Suppress per-benchmark output
+;;   --no-save           Don't save results, just print summary table
 ;;   --iterations, -i N  Number of iterations per benchmark (default: 10)
 ;;   --cores, -c N,M,... Specific worker counts (comma-separated)
 ;;   --cores, -c N-M     Range of worker counts (e.g., 1-8)
@@ -32,6 +33,7 @@
 ;;   ./bench mpl                 # Just MPL benchmarks
 ;;   ./bench fib nqueens         # Just fib and nqueens benchmarks
 ;;   ./bench --quick             # Quick smoke test
+;;   ./bench --no-save fib       # Run fib and print summary (no files saved)
 ;;   ./bench --iterations 5      # Run with 5 iterations each
 ;;   ./bench --cores 1,4,8       # Specific core counts
 ;;   ./bench mpl --cores 1-4     # MPL with cores 1,2,4
@@ -115,7 +117,11 @@
 (define quiet-mode (make-parameter #f))
 (define dry-run-mode (make-parameter #f))
 (define generate-html (make-parameter #t))
+(define save-results (make-parameter #t))
 (define iterations (make-parameter 10))
+
+;; Results storage for --no-save mode: hash of (benchmark worker) -> (listof real-ms)
+(define collected-results (make-hash))
 
 ;; ============================================================================
 ;; Core Detection
@@ -181,6 +187,51 @@
     [else (error 'suite->directory "unknown suite: ~a" suite)]))
 
 ;; ============================================================================
+;; Statistics
+;; ============================================================================
+
+(define (mean lst)
+  (if (null? lst) 0 (/ (apply + lst) (length lst))))
+
+(define (median lst)
+  (if (null? lst)
+      0
+      (let ([sorted (sort lst <)]
+            [n (length lst)])
+        (if (odd? n)
+            (list-ref sorted (quotient n 2))
+            (/ (+ (list-ref sorted (- (quotient n 2) 1))
+                  (list-ref sorted (quotient n 2)))
+               2)))))
+
+(define (minimum lst)
+  (if (null? lst) 0 (apply min lst)))
+
+;; Parse benchmark sexp output and extract real-ms values
+(define (parse-benchmark-output output)
+  (define results '())
+  (with-handlers ([exn:fail? (λ (_) results)])
+    (define in (open-input-string output))
+    (let loop ()
+      (define expr (read in))
+      (when (and (list? expr) (eq? (first expr) 'benchmark))
+        (define metrics (assoc 'metrics (cdr expr)))
+        (when metrics
+          (define real-ms (assoc 'real-ms (cdr metrics)))
+          (when real-ms
+            (set! results (cons (second real-ms) results)))))
+      (unless (eof-object? (peek-char in))
+        (loop)))
+    results))
+
+;; Store results for a benchmark run
+(define (store-result! name workers real-ms-list)
+  (define key (list name workers))
+  (hash-update! collected-results key
+                (λ (existing) (append existing real-ms-list))
+                '()))
+
+;; ============================================================================
 ;; Listing
 ;; ============================================================================
 
@@ -198,6 +249,33 @@
 ;; Benchmark Running
 ;; ============================================================================
 
+;; Run a single benchmark invocation and optionally capture output
+(define (run-benchmark-once benchmark-path cmd-args name workers suppress-output?)
+  (cond
+    [(dry-run-mode)
+     (printf "    Would run: racket ~a ~a~n" benchmark-path (string-join cmd-args " "))
+     #t]
+    [(save-results)
+     ;; Normal mode: run and optionally suppress output
+     (if suppress-output?
+         (parameterize ([current-output-port (open-output-nowhere)]
+                        [current-error-port (open-output-nowhere)])
+           (apply system* (find-executable-path "racket")
+                  (path->string benchmark-path) cmd-args))
+         (apply system* (find-executable-path "racket")
+                (path->string benchmark-path) cmd-args))]
+    [else
+     ;; No-save mode: capture stdout, parse results
+     (define output-str
+       (with-output-to-string
+         (λ ()
+           (parameterize ([current-error-port (open-output-nowhere)])
+             (apply system* (find-executable-path "racket")
+                    (path->string benchmark-path) cmd-args)))))
+     (define real-ms-values (parse-benchmark-output output-str))
+     (store-result! name workers real-ms-values)
+     (not (null? real-ms-values))]))
+
 (define (run-benchmark name suite log-dir workers)
   (define suite-dir (suite->directory suite))
   (define benchmark-path (build-path "benchmarks" suite-dir (format "~a.rkt" name)))
@@ -210,61 +288,49 @@
   (unless (file-exists? benchmark-path)
     (error 'run-benchmark "Benchmark file not found: ~a" benchmark-path))
 
-  ;; Delete existing log if present
-  (when (file-exists? log-path)
+  ;; Delete existing log if present (only in save mode)
+  (when (and (save-results) (file-exists? log-path))
     (delete-file log-path))
 
-  (when (or (quick-mode) (quiet-mode))
+  (define suppress-output? (or (quick-mode) (quiet-mode) (not (save-results))))
+
+  (when suppress-output?
     (printf "  ~a~n" name)
     (flush-output))
 
   ;; Run sequential (workers=1) first
   (define seq-cmd-args
-    (append args (list "--workers" "1" "--log" (path->string log-path))))
-  (when (dry-run-mode)
-    (printf "    Would run: racket ~a ~a~n" benchmark-path (string-join seq-cmd-args " ")))
-  (unless (dry-run-mode)
-    (define result
-      (if (or (quick-mode) (quiet-mode))
-          (parameterize ([current-output-port (open-output-nowhere)]
-                         [current-error-port (open-output-nowhere)])
-            (apply system* (find-executable-path "racket")
-                   (path->string benchmark-path) seq-cmd-args))
-          (begin
-            (printf "  Running ~a...~n" name)
-            (apply system* (find-executable-path "racket")
-                   (path->string benchmark-path) seq-cmd-args))))
-    (unless result
-      (eprintf "    Warning: ~a sequential failed~n" name)))
+    (if (save-results)
+        (append args (list "--workers" "1" "--log" (path->string log-path)))
+        (append args (list "--workers" "1"))))
+  (unless suppress-output?
+    (printf "  Running ~a...~n" name))
+  (define seq-result (run-benchmark-once benchmark-path seq-cmd-args name 1 suppress-output?))
+  (unless seq-result
+    (eprintf "    Warning: ~a sequential failed~n" name))
 
   ;; Run parallel for each worker count (skip workers=1, already run as sequential)
   (for ([w workers]
         #:when (> w 1))
     (define par-cmd-args
-      (append args (list "--workers" (number->string w)
-                         "--log" (path->string log-path)
-                         "--skip-sequential")))
-    (when (dry-run-mode)
-      (printf "    Would run: racket ~a ~a~n" benchmark-path (string-join par-cmd-args " ")))
-    (unless (dry-run-mode)
-      (define result
-        (if (or (quick-mode) (quiet-mode))
-            (parameterize ([current-output-port (open-output-nowhere)]
-                           [current-error-port (open-output-nowhere)])
-              (apply system* (find-executable-path "racket")
-                     (path->string benchmark-path) par-cmd-args))
-            (apply system* (find-executable-path "racket")
-                   (path->string benchmark-path) par-cmd-args)))
-      (unless result
-        (eprintf "    Warning: ~a with ~a workers failed~n" name w)))))
+      (if (save-results)
+          (append args (list "--workers" (number->string w)
+                             "--log" (path->string log-path)
+                             "--skip-sequential"))
+          (append args (list "--workers" (number->string w)
+                             "--skip-sequential"))))
+    (define par-result (run-benchmark-once benchmark-path par-cmd-args name w suppress-output?))
+    (unless par-result
+      (eprintf "    Warning: ~a with ~a workers failed~n" name w))))
 
 (define (run-suite suite log-dir workers)
   (printf "Running ~a benchmarks...~n" suite)
-  (unless (or (quick-mode) (quiet-mode))
+  (unless (or (quick-mode) (quiet-mode) (not (save-results)))
     (printf "  Worker counts: ~a~n" workers)
     (printf "  Log directory: ~a~n~n" log-dir))
 
-  (make-directory* log-dir)
+  (when (save-results)
+    (make-directory* log-dir))
 
   (define configs
     (case suite
@@ -367,6 +433,59 @@
        (printf "  Visualization saved to: ~a~n" html-file))]))
 
 ;; ============================================================================
+;; Summary Printing (for --no-save mode)
+;; ============================================================================
+
+(define (print-results-summary workers)
+  (newline)
+  (printf "========================================~n")
+  (printf "  Results Summary~n")
+  (printf "========================================~n~n")
+
+  ;; Group results by benchmark name
+  (define benchmarks
+    (remove-duplicates
+     (for/list ([key (in-hash-keys collected-results)])
+       (first key))))
+
+  ;; Get all worker counts that were used
+  (define all-workers (sort (cons 1 (filter (λ (w) (> w 1)) workers)) <))
+
+  ;; Print header
+  (printf "~a" (make-string 20 #\space))
+  (for ([w all-workers])
+    (if (= w 1)
+        (printf "~a" (~a "seq" #:width 24 #:align 'center))
+        (printf "~a" (~a (format "~a workers" w) #:width 24 #:align 'center))))
+  (newline)
+  (printf "~a" (~a "Benchmark" #:width 20))
+  (for ([_ all-workers])
+    (printf "~a" (~a "mean/median/min" #:width 24 #:align 'center)))
+  (newline)
+  (printf "~a~n" (make-string (+ 20 (* 24 (length all-workers))) #\-))
+
+  ;; Print each benchmark
+  (for ([bench (sort benchmarks symbol<?)])
+    (printf "~a" (~a bench #:width 20))
+    (for ([w all-workers])
+      (define key (list bench w))
+      (define results (hash-ref collected-results key '()))
+      (if (null? results)
+          (printf "~a" (~a "-" #:width 24 #:align 'center))
+          (let ([m (mean results)]
+                [med (median results)]
+                [mn (minimum results)])
+            (printf "~a"
+                    (~a (format "~a/~a/~a"
+                                (exact->inexact (round m))
+                                (exact->inexact (round med))
+                                mn)
+                        #:width 24 #:align 'center)))))
+    (newline))
+
+  (newline))
+
+;; ============================================================================
 ;; Main
 ;; ============================================================================
 
@@ -388,6 +507,9 @@
       (quick-mode #t)]
      [("--quiet") "Suppress per-benchmark output"
       (quiet-mode #t)]
+     [("--no-save") "Don't save results, just print summary"
+      (save-results #f)
+      (generate-html #f)]
      [("--iterations" "-i") n "Number of iterations per benchmark (default: 10)"
       (set! iterations-str n)]
      [("--cores" "-c") counts "Worker counts (comma-separated or range)"
@@ -437,7 +559,8 @@
                  (~r (date-second (current-date)) #:min-width 2 #:pad-string "0")))
        (build-path output-base timestamp)]))
 
-  (make-directory* output-dir)
+  (when (save-results)
+    (make-directory* output-dir))
 
   ;; Default to "all" if nothing specified
   (define items
@@ -457,6 +580,8 @@
      (printf "Parbench (quick mode)~n")]
     [(quiet-mode)
      (printf "Parbench~n")]
+    [(not (save-results))
+     (printf "Parbench (no-save mode)~n")]
     [else
      (printf "========================================~n")
      (printf "  Parbench - Parallel Benchmark Suite~n")
@@ -524,17 +649,22 @@
                               title
                               (reverse suite-dirs)))
 
+  ;; Print results summary (for --no-save mode)
+  (when (not (save-results))
+    (print-results-summary workers))
+
   ;; Summary
-  (newline)
-  (cond
-    [(or (quick-mode) (quiet-mode))
-     (printf "Done. Results: ~a/results.html~n" output-dir)]
-    [else
-     (printf "========================================~n")
-     (printf "  Complete!~n")
-     (printf "========================================~n~n")
-     (printf "Results saved to: ~a/~n" output-dir)
-     (when (generate-html)
-       (newline)
-       (printf "View results:~n")
-       (printf "  open ~a/results.html~n" output-dir))]))
+  (when (save-results)
+    (newline)
+    (cond
+      [(or (quick-mode) (quiet-mode))
+       (printf "Done. Results: ~a/results.html~n" output-dir)]
+      [else
+       (printf "========================================~n")
+       (printf "  Complete!~n")
+       (printf "========================================~n~n")
+       (printf "Results saved to: ~a/~n" output-dir)
+       (when (generate-html)
+         (newline)
+         (printf "View results:~n")
+         (printf "  open ~a/results.html~n" output-dir))])))
