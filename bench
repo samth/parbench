@@ -86,19 +86,14 @@
     (centrality "--n" "20000" "--edges" "100000")))
 
 ;; Shootout benchmarks: (name args...)
+;; All have parallel implementations built in
 (define shootout-benchmarks
   '((binary-trees "--n" "18")
-    (binary-trees-v2 "--n" "18")
     (spectral-norm "--n" "3000")
-    (spectral-norm-v2 "--n" "3000")
     (fannkuch-redux "--n" "11")
-    (fannkuch-redux-v2 "--n" "11")
     (mandelbrot "--n" "4000")
-    (mandelbrot-v2 "--n" "4000")
     (k-nucleotide "--n" "500000")
-    (k-nucleotide-v2 "--n" "500000")
-    (regex-dna "--n" "500000")
-    (regex-dna-v2 "--n" "500000")))
+    (regex-dna "--n" "500000")))
 
 ;; Racket benchmarks: (name args...)
 (define racket-benchmarks
