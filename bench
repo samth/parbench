@@ -293,20 +293,19 @@
     (printf "  ~a~n" name)
     (flush-output))
 
-  ;; Run sequential (workers=1) first
+  ;; Run sequential (workers=1) first - store under 'seq key
   (define seq-cmd-args
     (if (save-results)
         (append args (list "--workers" "1" "--log" (path->string log-path)))
         (append args (list "--workers" "1"))))
   (unless suppress-output?
     (printf "  Running ~a...~n" name))
-  (define seq-result (run-benchmark-once benchmark-path seq-cmd-args name 1 suppress-output?))
+  (define seq-result (run-benchmark-once benchmark-path seq-cmd-args name 'seq suppress-output?))
   (unless seq-result
     (eprintf "    Warning: ~a sequential failed~n" name))
 
-  ;; Run parallel for each worker count (skip workers=1, already run as sequential)
-  (for ([w workers]
-        #:when (> w 1))
+  ;; Run parallel for each worker count (including 1 if specified)
+  (for ([w workers])
     (define par-cmd-args
       (if (save-results)
           (append args (list "--workers" (number->string w)
@@ -443,26 +442,26 @@
      (for/list ([key (in-hash-keys collected-results)])
        (first key))))
 
-  ;; Get all worker counts that were used
-  (define all-workers (sort (cons 1 (filter (λ (w) (> w 1)) workers)) <))
+  ;; Columns: 'seq first, then all worker counts from the workers list
+  (define all-columns (cons 'seq (sort workers <)))
 
   ;; Print header
   (printf "~a" (make-string 20 #\space))
-  (for ([w all-workers])
-    (if (= w 1)
+  (for ([w all-columns])
+    (if (eq? w 'seq)
         (printf "~a" (~a "seq" #:width 24 #:align 'center))
         (printf "~a" (~a (format "~a workers" w) #:width 24 #:align 'center))))
   (newline)
   (printf "~a" (~a "Benchmark" #:width 20))
-  (for ([_ all-workers])
+  (for ([_ all-columns])
     (printf "~a" (~a "mean/median/min" #:width 24 #:align 'center)))
   (newline)
-  (printf "~a~n" (make-string (+ 20 (* 24 (length all-workers))) #\-))
+  (printf "~a~n" (make-string (+ 20 (* 24 (length all-columns))) #\-))
 
   ;; Print each benchmark
   (for ([bench (sort benchmarks symbol<?)])
     (printf "~a" (~a bench #:width 20))
-    (for ([w all-workers])
+    (for ([w all-columns])
       (define key (list bench w))
       (define results (hash-ref collected-results key '()))
       (if (null? results)
