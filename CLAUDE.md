@@ -276,10 +276,10 @@ raco test tests/bmbench-test.rkt    # Specific test
 ## Quick Reference Commands
 
 ```bash
-# Run benchmarks via raco (after: raco pkg install --link .)
-raco parbench fib --quick
-raco parbench mpl --cores 1,4,8
-raco parbench --help
+# Run benchmarks (or use: raco parbench after installing package)
+./bench fib --quick
+./bench mpl --cores 1,4,8
+./bench --help
 
 # Run single benchmark directly
 racket benchmarks/mpl/fib.rkt --n 40 --workers 4 --repeat 3
