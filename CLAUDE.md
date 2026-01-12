@@ -6,7 +6,7 @@ This document provides guidance for AI coding assistants (Claude, GitHub Copilot
 
 This is a **comprehensive parallel benchmarking suite** for Racket, containing benchmarks across 3 categories:
 - **Racket benchmarks** (3): bmbench, richards, rows1b
-- **Shootout benchmarks** (8): spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, fasta, regex-dna, k-nucleotide
+- **Shootout benchmarks** (6): binary-trees, spectral-norm, fannkuch-redux, mandelbrot, k-nucleotide, regex-dna
 - **MPL benchmarks** (27): histogram, integer-sort, bfs, mis, msf, suffix-array, convex-hull, plus 20 additional benchmarks
 
 ## Architecture & Key Modules
@@ -301,9 +301,9 @@ racket -c benchmarks/mpl/fib.rkt
 ## Benchmark Counts by Suite
 
 - **Racket:** 3 benchmarks (bmbench, richards, rows1b)
-- **Shootout:** 8 benchmarks (spectral-norm, binary-trees, nbody, fannkuch-redux, mandelbrot, fasta, regex-dna, k-nucleotide)
+- **Shootout:** 6 benchmarks (binary-trees, spectral-norm, fannkuch-redux, mandelbrot, k-nucleotide, regex-dna)
 - **MPL:** 27 benchmarks (graph algorithms, sorting, text processing, numeric computations)
-- **Total:** 38 active benchmarks
+- **Total:** 36 active benchmarks
 
 ## Version History
 

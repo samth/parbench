@@ -5,16 +5,20 @@
 The simplest way to run benchmarks is with the unified `./bench` command:
 
 ```bash
-./bench              # Run all benchmarks, auto-detect cores
-./bench mpl          # Just MPL benchmarks (27)
-./bench shootout     # Just Shootout benchmarks (12)
-./bench racket       # Just Racket benchmarks (3)
-./bench --quick      # Quick smoke test
-./bench --cores 1,4,8  # Specific core counts
+./bench fib          # Run fib benchmark, print summary table
+./bench mpl          # Run all MPL benchmarks (27)
+./bench shootout     # Run Shootout benchmarks (6)
+./bench racket       # Run Racket benchmarks (3)
+./bench --quick      # Quick smoke test (3 iterations)
+./bench -v fib       # Verbose output
+./bench --save fib   # Save log files
+./bench --html fib   # Save logs and generate HTML report
+./bench --iterations 5  # Set iteration count
+./bench --cores 1,4,8   # Specific core counts
 ./bench --help       # Full options
 ```
 
-Results are saved to `./results/` with HTML reports.
+By default, `./bench` runs quietly and prints a summary table without saving files.
 
 ## Suite Runners
 
@@ -24,7 +28,7 @@ For more control, use the suite-specific runners directly:
 # MPL benchmarks (27) with custom worker counts
 racket run-mpl-benchmarks.rkt --workers 1,2,4,8 --log-dir results/mpl
 
-# Shootout benchmarks (12)
+# Shootout benchmarks (6)
 racket run-shootout-benchmarks.rkt --workers 1,4,8 --output shootout.html
 
 # Racket benchmarks (3)
@@ -124,10 +128,9 @@ racket benchmarks/run-suite.rkt --suite all --config benchmarks/config/quick.sex
 | Text | tokens, word-count, grep, dedup, palindrome, parens |
 | Other | flatten, collect, shuffle |
 
-### Shootout Benchmarks (12)
+### Shootout Benchmarks (6)
 
 binary-trees, spectral-norm, fannkuch-redux, mandelbrot, k-nucleotide, regex-dna
-(Each has v1 and v2 parallel implementations)
 
 ### Racket Benchmarks (3)
 

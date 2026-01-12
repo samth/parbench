@@ -5,16 +5,28 @@ A comprehensive benchmarking suite for evaluating parallel performance in Racket
 ## Quick Start
 
 ```bash
-# Run all benchmarks (auto-detects cores, sweeps worker counts)
-./bench
+# Run a benchmark (prints summary table)
+./bench fib
 
 # Run specific suite
 ./bench mpl          # 27 MPL parallel benchmarks
-./bench shootout     # 12 Shootout benchmarks
+./bench shootout     # 6 Shootout benchmarks
 ./bench racket       # 3 Racket benchmarks
 
-# Quick smoke test (small sizes, faster)
+# Quick smoke test (3 iterations)
 ./bench --quick
+
+# Verbose output
+./bench -v fib
+
+# Save results to log files
+./bench --save fib
+
+# Save logs and generate HTML report
+./bench --html fib
+
+# Set number of iterations
+./bench --iterations 5 fib
 
 # Specific core counts
 ./bench --cores 1,4,8
@@ -25,14 +37,15 @@ A comprehensive benchmarking suite for evaluating parallel performance in Racket
 ./bench --list
 ```
 
-Results are saved to `./results/` with HTML reports for visualization.
+By default, `./bench` runs quietly and prints a summary table without saving files.
+Use `--save` to save log files or `--html` to also generate HTML reports.
 
 ## Benchmark Suites
 
 | Suite | Benchmarks | Description |
 |-------|------------|-------------|
 | **mpl** | 27 | Graph algorithms, sorting, numeric, text processing |
-| **shootout** | 12 | Classic language benchmark game workloads |
+| **shootout** | 6 | Classic language benchmark game workloads |
 | **racket** | 3 | Boyer-Moore, Richards, synthetic workloads |
 
 ### MPL Benchmarks (27)
@@ -42,9 +55,8 @@ Numeric: histogram, primes, fib, nqueens, mcss, subset-sum, bignum-add
 Text: tokens, word-count, grep, dedup, palindrome, parens
 Other: flatten, collect, shuffle
 
-### Shootout Benchmarks (12)
+### Shootout Benchmarks (6)
 binary-trees, spectral-norm, fannkuch-redux, mandelbrot, k-nucleotide, regex-dna
-(Each has v1 and v2 parallel implementations)
 
 ### Racket Benchmarks (3)
 bmbench (Boyer-Moore majority), richards (OS simulator), rows1b (data processing)
@@ -95,7 +107,7 @@ run-*-benchmarks.rkt  # Suite-specific runners
 benchmarks/
   common/             # Shared CLI, logging infrastructure
   mpl/                # MPL parallel algorithms (27)
-  shootout/           # Shootout benchmarks (12)
+  shootout/           # Shootout benchmarks (6)
   racket/             # Racket benchmarks (3)
   tools/              # Analysis and visualization
   config/             # Configuration files
