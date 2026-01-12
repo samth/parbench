@@ -40,6 +40,25 @@ A comprehensive benchmarking suite for evaluating parallel performance in Racket
 By default, `./bench` runs quietly and prints a summary table without saving files.
 Use `--save` to save log files or `--html` to also generate HTML reports.
 
+### Example Output
+
+```
+$ ./bench --quick fib
+Parbench (quick mode)
+
+Running mpl benchmarks...
+  fib
+
+========================================
+  Results Summary
+========================================
+
+                              seq                  1 workers               4 workers
+Benchmark               mean/median/min         mean/median/min         mean/median/min
+--------------------------------------------------------------------------------------------
+fib                     785.0/788.0/764         798.0/797.0/795         216.0/217.0/209
+```
+
 ## Benchmark Suites
 
 | Suite | Benchmarks | Description |
