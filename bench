@@ -20,6 +20,7 @@
 ;;   --save, -s          Save results to log files
 ;;   --html              Generate HTML report (implies --save)
 ;;   --iterations, -i N  Number of iterations per benchmark (default: 10)
+;;   --work, -w FACTOR   Scale problem sizes by factor (e.g., 0.1, 0.5, 2.0)
 ;;   --cores, -c N,M,... Specific worker counts (comma-separated)
 ;;   --cores, -c N-M     Range using common values: 1,2,4,6,8,12,16,24,32 within N-M
 ;;   --output, -o DIR    Output base directory (default: ./results)
@@ -116,6 +117,35 @@
 (define generate-html (make-parameter #f)) ; no HTML by default
 (define save-results (make-parameter #f))  ; no save by default
 (define iterations (make-parameter 10))
+(define work-factor (make-parameter 1.0))  ; scale factor for problem sizes
+
+;; Scale numeric arguments in a benchmark config by work-factor
+;; Handles args like: ("--n" "1000000" "--workers" "4")
+;; Only scales values for size-related flags, not --workers, --repeat, etc.
+(define size-flags '("--n" "--size" "--rows" "--lines" "--edges" "--iterations"
+                     "--range" "--unique" "--buckets" "--goal" "--max-value"
+                     "--avg-size" "--chunk-size" "--threshold" "--max-depth"))
+
+(define (scale-benchmark-args args)
+  (define factor (work-factor))
+  (if (= factor 1.0)
+      args
+      (let loop ([remaining args] [result '()])
+        (cond
+          [(null? remaining) (reverse result)]
+          [(null? (cdr remaining)) (reverse (cons (car remaining) result))]
+          [else
+           (define flag (car remaining))
+           (define val (cadr remaining))
+           (if (and (member flag size-flags)
+                    (string->number val))
+               ;; Scale this numeric value
+               (let ([scaled (max 1 (inexact->exact (round (* (string->number val) factor))))])
+                 (loop (cddr remaining)
+                       (cons (number->string scaled) (cons flag result))))
+               ;; Keep as-is
+               (loop (cdr remaining)
+                     (cons flag result)))]))))
 
 ;; Results storage for --no-save mode: hash of (benchmark worker) -> (listof real-ms)
 (define collected-results (make-hash))
@@ -205,21 +235,25 @@
   (if (null? lst) 0 (apply min lst)))
 
 ;; Parse benchmark sexp output and extract real-ms values
+;; Handles mixed text/sexp output by catching read errors on non-sexp text
 (define (parse-benchmark-output output)
   (define results '())
-  (with-handlers ([exn:fail? (λ (_) results)])
-    (define in (open-input-string output))
-    (let loop ()
-      (define expr (read in))
-      (when (and (list? expr) (eq? (first expr) 'benchmark))
-        (define metrics (assoc 'metrics (cdr expr)))
-        (when metrics
-          (define real-ms (assoc 'real-ms (cdr metrics)))
-          (when real-ms
-            (set! results (cons (second real-ms) results)))))
-      (unless (eof-object? (peek-char in))
-        (loop)))
-    results))
+  (define in (open-input-string output))
+  (let loop ()
+    (unless (eof-object? (peek-char in))
+      (with-handlers ([exn:fail:read? (λ (_)
+                                        ;; Skip problematic character and continue
+                                        (read-char in)
+                                        (loop))])
+        (define expr (read in))
+        (when (and (list? expr) (eq? (first expr) 'benchmark))
+          (define metrics (assoc 'metrics (cdr expr)))
+          (when metrics
+            (define real-ms (assoc 'real-ms (cdr metrics)))
+            (when real-ms
+              (set! results (cons (second real-ms) results)))))
+        (loop))))
+  results)
 
 ;; Store results for a benchmark run
 (define (store-result! name workers real-ms-list)
@@ -274,8 +308,10 @@
   (define log-path (build-path log-dir (format "~a.sexp" name)))
   (define config (get-benchmark-config name))
   (define base-args (if config (cdr config) '()))
+  ;; Scale problem sizes by work-factor
+  (define scaled-args (scale-benchmark-args base-args))
   ;; Add --repeat with iterations count
-  (define args (append base-args (list "--repeat" (number->string (iterations)))))
+  (define args (append scaled-args (list "--repeat" (number->string (iterations)))))
 
   (unless (file-exists? benchmark-path)
     (error 'run-benchmark "Benchmark file not found: ~a" benchmark-path))
@@ -505,6 +541,8 @@
       (generate-html #t)]
      [("--iterations" "-i") n "Number of iterations per benchmark (default: 10)"
       (set! iterations-str n)]
+     [("--work" "-w") factor "Scale problem sizes by factor (e.g., 0.1, 0.5, 2.0)"
+      (work-factor (string->number factor))]
      [("--cores" "-c") counts "Worker counts (comma-separated or range)"
       (set! worker-counts-str counts)]
      [("--output" "-o") dir "Output base directory (default: ./results)"
