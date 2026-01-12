@@ -19,10 +19,8 @@
 (define shootout-benchmarks
   '((spectral-norm "shootout/spectral-norm.rkt" (--n "1000" --iterations "10" --workers "4" --repeat "3"))
     (binary-trees "shootout/binary-trees.rkt" (--max-depth "14" --workers "4" --repeat "3"))
-    (nbody "shootout/nbody.rkt" (--n "100000" --workers "4" --repeat "3"))
     (fannkuch-redux "shootout/fannkuch-redux.rkt" (--n "9" --workers "1" --repeat "3"))
     (mandelbrot "shootout/mandelbrot.rkt" (--n "500" --workers "4" --repeat "3"))
-    (fasta "shootout/fasta.rkt" (--n "100000" --workers "4" --repeat "3"))
     (regex-dna "shootout/regex-dna.rkt" (--n "100000" --workers "4" --repeat "3"))
     (k-nucleotide "shootout/k-nucleotide.rkt" (--n "100000" --workers "4" --repeat "3"))))
 
@@ -85,7 +83,7 @@
 
 ;; Apply configuration overrides to benchmark specs
 (define (apply-config-overrides benchmarks config)
-  (define overrides (cdar (hash-ref config 'overrides '())))
+  (define overrides (hash-ref config 'overrides '()))
   (for/list ([bench benchmarks])
     (match-define (list name path args) bench)
     (define override (assoc name overrides))
@@ -120,7 +118,7 @@
   (define log-file (build-path log-dir (format "~a~a.sexp" name log-suffix)))
   (define base-args (if worker (override-workers args worker) args))
   (define extended-args (if skip-seq-log?
-                            (append base-args (list '--skip-sequential-log))
+                            (append base-args (list '--skip-sequential))
                             base-args))
   (define all-args (append (map (λ (a) (if (symbol? a) (symbol->string a) a)) extended-args)
                            (list "--log" (path->string log-file))))

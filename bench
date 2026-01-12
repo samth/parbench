@@ -21,7 +21,7 @@
 ;;   --html              Generate HTML report (implies --save)
 ;;   --iterations, -i N  Number of iterations per benchmark (default: 10)
 ;;   --cores, -c N,M,... Specific worker counts (comma-separated)
-;;   --cores, -c N-M     Range of worker counts (e.g., 1-8)
+;;   --cores, -c N-M     Range using common values: 1,2,4,6,8,12,16,24,32 within N-M
 ;;   --output, -o DIR    Output base directory (default: ./results)
 ;;   --update, -u DIR    Update existing run directory (implies --save)
 ;;   --list, -l          List available benchmarks
@@ -650,7 +650,9 @@
   (when (save-results)
     (cond
       [(or (quick-mode) (quiet-mode))
-       (printf "Results: ~a/results.html~n" output-dir)]
+       (if (generate-html)
+           (printf "Results: ~a/results.html~n" output-dir)
+           (printf "Results: ~a/~n" output-dir))]
       [else
        (printf "Results saved to: ~a/~n" output-dir)
        (when (generate-html)
