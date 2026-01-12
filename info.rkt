@@ -6,3 +6,6 @@
                "base"
                "plot-lib"))
 (define build-deps '("rackunit-lib"))
+
+(define raco-commands
+  '(("parbench" (submod parbench/raco-parbench main) "run parallel benchmarks" #f)))
