@@ -8,39 +8,75 @@ fi
 
 echo "Setting up Racket environment..."
 
+RACKET_DIR="$HOME/.local/racket"
+RACKET_VERSION="9.0"
+
 # Check if Racket is installed
-if ! command -v racket &> /dev/null; then
-  echo "Installing Racket..."
+if ! command -v racket &> /dev/null && [ ! -x "$RACKET_DIR/bin/racket" ]; then
 
-  # Install Racket using the installer script
-  # Using full installation to include plot libraries and other common packages
-  # Installing to user directory (no sudo required)
-  RACKET_DIR="$HOME/.local/racket"
+  echo "Installing Racket $RACKET_VERSION..."
+  INSTALLER_URL="https://mirror.racket-lang.org/installers/$RACKET_VERSION/racket-$RACKET_VERSION-x86_64-linux-cs.sh"
+  INSTALLER_FILE="/tmp/racket-installer.sh"
 
-  wget -q https://mirror.racket-lang.org/installers/9.0/racket-9.0-x86_64-linux-cs.sh
-  chmod +x racket-9.0-x86_64-linux-cs.sh
-  ./racket-9.0-x86_64-linux-cs.sh --in-place --dest "$RACKET_DIR"
-  rm racket-9.0-x86_64-linux-cs.sh
+  curl -fsSL -o "$INSTALLER_FILE" "$INSTALLER_URL"
+  chmod +x "$INSTALLER_FILE"
+  "$INSTALLER_FILE" --in-place --dest "$RACKET_DIR"
+  rm -f "$INSTALLER_FILE"
 
-  # Add Racket to PATH for this session
+  echo "Racket $RACKET_VERSION installed successfully"
+fi
+
+# Set up environment for this session
+if [ -x "$RACKET_DIR/bin/racket" ]; then
   export PATH="$RACKET_DIR/bin:$PATH"
 
-  # Persist PATH for future sessions
   if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
     echo "export PATH=\"$RACKET_DIR/bin:\$PATH\"" >> "$CLAUDE_ENV_FILE"
   fi
-
-  echo "✅ Racket installed successfully"
-else
-  echo "✅ Racket already installed"
 fi
 
-echo "Installing package dependencies..."
+# Verify Racket is available
+if ! command -v racket &> /dev/null; then
+  echo "ERROR: Racket installation failed"
+  exit 1
+fi
 
-# Install package dependencies
-# Using --auto to automatically install dependencies
-# Using --batch for non-interactive mode
-# Using --no-docs to skip documentation (faster installation)
-raco pkg install --auto --batch --no-docs
+echo "Racket $(racket --version) ready"
 
-echo "✅ Package dependencies installed successfully"
+# Install dependencies via git clone (avoids proxy auth issues with package catalog)
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+DEPS_DIR="/tmp/racket-deps"
+
+# Check if parbench is already installed
+if raco pkg show parbench 2>/dev/null | grep -q "parbench"; then
+  echo "parbench package already installed"
+else
+  echo "Installing dependencies via git clone..."
+  mkdir -p "$DEPS_DIR"
+
+  # Clone and install rackcheck-lib if needed
+  if ! raco pkg show rackcheck-lib 2>/dev/null | grep -q "rackcheck-lib"; then
+    if [ ! -d "$DEPS_DIR/rackcheck" ]; then
+      echo "Cloning rackcheck..."
+      git clone --depth 1 https://github.com/Bogdanp/rackcheck.git "$DEPS_DIR/rackcheck" 2>&1
+    fi
+    echo "Installing rackcheck-lib..."
+    raco pkg install --batch --no-docs --link "$DEPS_DIR/rackcheck/rackcheck-lib" 2>&1
+  fi
+
+  # Clone and install recspecs if needed
+  if ! raco pkg show recspecs 2>/dev/null | grep -q "recspecs"; then
+    if [ ! -d "$DEPS_DIR/recspecs" ]; then
+      echo "Cloning recspecs..."
+      git clone --depth 1 https://github.com/samth/recspecs.git "$DEPS_DIR/recspecs" 2>&1
+    fi
+    echo "Installing recspecs packages..."
+    raco pkg install --batch --no-docs --link "$DEPS_DIR/recspecs/recspecs-lib" "$DEPS_DIR/recspecs/recspecs" 2>&1
+  fi
+
+  # Link the current project as a package
+  echo "Linking project as package..."
+  raco pkg install --batch --no-docs --link "$PROJECT_DIR" 2>&1
+fi
+
+echo "Setup complete"
