@@ -34,3 +34,6 @@ results/
 
 # Temporary workspace artifacts
 tmp/
+
+# Generated documentation
+doc/
