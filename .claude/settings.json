@@ -1,4 +1,12 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(./bench:*)",
+      "Bash(raco parbench:*)",
+      "Bash(raco test:*)",
+      "Bash(raco setup:*)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
