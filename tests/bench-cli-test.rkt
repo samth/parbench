@@ -29,12 +29,17 @@
    "\n"))
 
 ;; Run bench command and capture output
+;; Uses find-system-path to get the currently running racket executable,
+;; which is more reliable than depending on racket being in PATH.
 (define (run-bench . args)
   (parameterize ([current-directory project-root])
-    (define cmd (string-join (cons "./bench" args) " "))
+    ;; Use the same racket that's running these tests - this works even when
+    ;; racket is not in PATH (e.g., in package build environments)
+    (define racket-exe (find-system-path 'exec-file))
     (with-output-to-string
       (lambda ()
-        (system (string-append cmd " 2>&1"))))))
+        (parameterize ([current-error-port (current-output-port)])
+          (apply system* racket-exe (path->string bench-script) args))))))
 
 (define bench-cli-tests
   (test-suite "bench CLI tests"
