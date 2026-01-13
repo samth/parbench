@@ -30,50 +30,50 @@ After installation, use `raco parbench` to run benchmarks.
 
 ```bash
 # Run a benchmark (prints summary table)
-raco parbench fib
+./bench fib
 
 # Run specific suite
-raco parbench mpl          # 27 MPL parallel benchmarks
-raco parbench shootout     # 6 Shootout benchmarks
-raco parbench racket       # 3 Racket benchmarks
+./bench mpl          # 27 MPL parallel benchmarks
+./bench shootout     # 6 Shootout benchmarks
+./bench racket       # 3 Racket benchmarks
 
 # Quick smoke test (3 iterations)
-raco parbench --quick
+./bench --quick
 
 # Verbose output
-raco parbench -v fib
+./bench -v fib
 
 # Save results to log files
-raco parbench --save fib
+./bench --save fib
 
 # Save logs and generate HTML report
-raco parbench --html fib
+./bench --html fib
 
 # Set number of iterations
-raco parbench --iterations 5 fib
+./bench --iterations 5 fib
 
 # Scale problem sizes (for quick testing)
-raco parbench --work 0.1 fib       # 10% of normal size
-raco parbench --work 0.001 fib     # Very small for smoke tests
+./bench --work 0.1 fib       # 10% of normal size
+./bench --work 0.001 fib     # Very small for smoke tests
 
 # Specific core counts
-raco parbench --cores 1,4,8
-raco parbench mpl --cores 1-8
+./bench --cores 1,4,8
+./bench mpl --cores 1-8
 
 # View options
-raco parbench --help
-raco parbench --list
+./bench --help
+./bench --list
 ```
 
-By default, `raco parbench` runs quietly and prints a summary table without saving files.
+By default, `./bench` runs quietly and prints a summary table without saving files.
 Use `--save` to save log files or `--html` to also generate HTML reports.
 
-Alternatively, run `./bench` directly from the repository root with the same arguments.
+After installing the package, `raco parbench` accepts all the same arguments.
 
 ### Example Output
 
 ```
-$ raco parbench --quick fib
+$ ./bench --quick fib
 Parbench (quick mode)
 
 Running mpl benchmarks...
@@ -120,22 +120,20 @@ bmbench (Boyer-Moore majority), richards (OS simulator), rows1b (data processing
 
 ```bash
 # Run a single benchmark directly
-racket -l parbench/benchmarks/mpl/fib -- --n 42 --workers 4 --repeat 3
+racket benchmarks/mpl/fib.rkt --n 42 --workers 4 --repeat 3
 
 # With logging
-racket -l parbench/benchmarks/mpl/histogram -- --n 10000000 --workers 8 --log results/hist.sexp
+racket benchmarks/mpl/histogram.rkt --n 10000000 --workers 8 --log results/hist.sexp
 ```
-
-The `--` separator tells `racket` that subsequent arguments should be passed to the module.
 
 ## Analyzing Results
 
 ```bash
 # Summarize log files
-racket -l parbench/benchmarks/tools/summarize-results -- results/*.sexp
+racket benchmarks/tools/summarize-results.rkt results/*.sexp
 
 # Generate plots
-racket -l parbench/benchmarks/tools/plot-results -- --input results/*.sexp --output plot.png
+racket benchmarks/tools/plot-results.rkt --input results/*.sexp --output plot.png
 ```
 
 ## Testing
