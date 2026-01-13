@@ -4,7 +4,9 @@
 (define version "0.1")
 (define deps '(("base" #:version "9.0")
                "plot-lib"))
-(define build-deps '("rackunit-lib" "recspecs-lib" "at-exp-lib"))
+(define build-deps '("rackunit-lib" "recspecs-lib" "at-exp-lib" "scribble-lib" "racket-doc"))
+
+(define scribblings '(("scribblings/parbench.scrbl" ())))
 
 (define license
   '(Apache-2.0 OR MIT))
