@@ -98,6 +98,28 @@ When adding a new benchmark, follow this checklist:
 - **Documentation strings:** Add docstrings for key functions
 - **Type annotations (optional):** Consider Typed Racket for performance-critical code
 
+### Submodule Usage
+
+**Always use `main` and `test` submodules correctly:**
+
+- **`(module+ main ...)`**: Code that should only run when the file is executed directly (not when required). Use for CLI entry points, benchmark runners, and any code with side effects.
+  ```racket
+  (module+ main
+    (define args (current-command-line-arguments))
+    (run-benchmark args))
+  ```
+
+- **`(module+ test ...)`**: Code that should only run during testing with `raco test`. Use for unit tests and test setup.
+  ```racket
+  (module+ test
+    (require rackunit)
+    (check-equal? (fib 10) 55))
+  ```
+
+- **Top-level code**: Only define functions, structs, and constants at the top level. Never put side-effecting code (prints, file I/O, benchmarks) at the top level—it will run on every `require`.
+
+- **Why this matters**: `raco test .` loads all `.rkt` files to check for test submodules. Files with top-level side effects or syntax errors will break the test suite. Files without a `test` submodule are simply skipped.
+
 ### Performance Considerations
 
 - **GC awareness:** Use `collect-garbage` before timing critical sections

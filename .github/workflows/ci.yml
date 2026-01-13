@@ -22,7 +22,7 @@ jobs:
         run: raco pkg install --auto --batch --no-docs
 
       - name: Run RackUnit test suite
-        run: raco test tests
+        run: raco test .
 
       - name: Run sample benchmarks
         run: ./bench --work 0.001 --iterations 1 --cores 1,2 fib histogram bfs binary-trees
