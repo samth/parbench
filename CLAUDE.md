@@ -171,6 +171,25 @@ raco test tests/bmbench-test.rkt    # Specific test
 - Before committing: `./bench --quick <affected-benchmarks>`
 - Full validation: `./bench <suite>` (with default settings)
 
+### Pre-Commit Requirements
+
+**ALWAYS run these commands successfully before committing:**
+
+```bash
+raco setup parbench    # Compile the package and check for errors
+raco test .            # Run all tests
+```
+
+Both commands must complete without errors. Do not commit if either fails. This ensures:
+- All files compile correctly (no syntax errors, missing requires)
+- All tests pass
+- The package is properly configured
+
+Optionally, also run a quick benchmark smoke test:
+```bash
+./bench --work 0.001 --iterations 1 --cores 1,2 fib histogram
+```
+
 ### Critical: Test-Benchmark Alignment
 
 **Before writing or modifying tests, ALWAYS read the benchmark file first** to verify:
