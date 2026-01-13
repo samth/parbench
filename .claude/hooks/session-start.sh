@@ -30,8 +30,12 @@ fi
 if [ -x "$RACKET_DIR/bin/racket" ]; then
   export PATH="$RACKET_DIR/bin:$PATH"
 
+  # Persist PATH for future shell invocations
   if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
     echo "export PATH=\"$RACKET_DIR/bin:\$PATH\"" >> "$CLAUDE_ENV_FILE"
+  elif ! grep -q "$RACKET_DIR/bin" ~/.bashrc 2>/dev/null; then
+    # Fallback: add to .bashrc if CLAUDE_ENV_FILE not available
+    echo "export PATH=\"$RACKET_DIR/bin:\$PATH\"" >> ~/.bashrc
   fi
 fi
 
