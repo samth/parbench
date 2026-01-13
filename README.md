@@ -2,55 +2,78 @@
 
 A comprehensive benchmarking suite for evaluating parallel performance in Racket.
 
+[![CI](https://github.com/samth/parbench/actions/workflows/ci.yml/badge.svg)](https://github.com/samth/parbench/actions/workflows/ci.yml)
+[![Racket Package](https://img.shields.io/badge/raco%20pkg-parbench-blue)](https://pkgs.racket-lang.org/package/parbench)
+[![Documentation](https://img.shields.io/badge/docs-racket--lang.org-blue)](https://docs.racket-lang.org/parbench/)
+
+## Installation
+
+Install from the Racket package catalog:
+
+```bash
+raco pkg install parbench
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/samth/parbench.git
+cd parbench
+raco pkg install --link .
+```
+
+After installation, use `raco parbench` to run benchmarks.
+
+**Documentation:** [docs.racket-lang.org/parbench](https://docs.racket-lang.org/parbench/)
+
 ## Quick Start
 
 ```bash
 # Run a benchmark (prints summary table)
-./bench fib
+raco parbench fib
 
 # Run specific suite
-./bench mpl          # 27 MPL parallel benchmarks
-./bench shootout     # 6 Shootout benchmarks
-./bench racket       # 3 Racket benchmarks
+raco parbench mpl          # 27 MPL parallel benchmarks
+raco parbench shootout     # 6 Shootout benchmarks
+raco parbench racket       # 3 Racket benchmarks
 
 # Quick smoke test (3 iterations)
-./bench --quick
+raco parbench --quick
 
 # Verbose output
-./bench -v fib
+raco parbench -v fib
 
 # Save results to log files
-./bench --save fib
+raco parbench --save fib
 
 # Save logs and generate HTML report
-./bench --html fib
+raco parbench --html fib
 
 # Set number of iterations
-./bench --iterations 5 fib
+raco parbench --iterations 5 fib
 
 # Scale problem sizes (for quick testing)
-./bench --work 0.1 fib       # 10% of normal size
-./bench --work 0.001 fib     # Very small for smoke tests
+raco parbench --work 0.1 fib       # 10% of normal size
+raco parbench --work 0.001 fib     # Very small for smoke tests
 
 # Specific core counts
-./bench --cores 1,4,8
-./bench mpl --cores 1-8
+raco parbench --cores 1,4,8
+raco parbench mpl --cores 1-8
 
 # View options
-./bench --help
-./bench --list
+raco parbench --help
+raco parbench --list
 ```
 
-By default, `./bench` runs quietly and prints a summary table without saving files.
+By default, `raco parbench` runs quietly and prints a summary table without saving files.
 Use `--save` to save log files or `--html` to also generate HTML reports.
 
-Alternatively, install the package with `raco pkg install --link .` to enable `raco parbench`,
-which accepts all the same arguments as `./bench`.
+Alternatively, run `./bench` directly from the repository root with the same arguments.
 
 ### Example Output
 
 ```
-$ ./bench --quick fib
+$ raco parbench --quick fib
 Parbench (quick mode)
 
 Running mpl benchmarks...
@@ -97,20 +120,22 @@ bmbench (Boyer-Moore majority), richards (OS simulator), rows1b (data processing
 
 ```bash
 # Run a single benchmark directly
-racket benchmarks/mpl/fib.rkt --n 42 --workers 4 --repeat 3
+racket -l parbench/benchmarks/mpl/fib -- --n 42 --workers 4 --repeat 3
 
 # With logging
-racket benchmarks/mpl/histogram.rkt --n 10000000 --workers 8 --log results/hist.sexp
+racket -l parbench/benchmarks/mpl/histogram -- --n 10000000 --workers 8 --log results/hist.sexp
 ```
+
+The `--` separator tells `racket` that subsequent arguments should be passed to the module.
 
 ## Analyzing Results
 
 ```bash
 # Summarize log files
-racket benchmarks/tools/summarize-results.rkt results/*.sexp
+racket -l parbench/benchmarks/tools/summarize-results -- results/*.sexp
 
 # Generate plots
-racket benchmarks/tools/plot-results.rkt --input results/*.sexp --output plot.png
+racket -l parbench/benchmarks/tools/plot-results -- --input results/*.sexp --output plot.png
 ```
 
 ## Testing
@@ -121,9 +146,9 @@ raco test tests/
 
 ## Documentation
 
+- **[Online Documentation](https://docs.racket-lang.org/parbench/)** - Full reference on docs.racket-lang.org
 - **[BENCHMARKS.md](BENCHMARKS.md)** - Detailed usage guide and CLI reference
 - **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** - Performance analysis and findings
-- **[CLAUDE.md](CLAUDE.md)** - AI assistant guidelines
 
 ## Repository Structure
 
