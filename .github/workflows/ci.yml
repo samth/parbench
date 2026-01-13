@@ -21,6 +21,9 @@ jobs:
       - name: Install package dependencies
         run: raco pkg install --auto --batch --no-docs
 
+      - name: Build package and documentation
+        run: raco setup --check-pkg-deps parbench
+
       - name: Run RackUnit test suite
         run: raco test .
 
