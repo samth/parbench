@@ -28,6 +28,10 @@ A comprehensive benchmarking suite for evaluating parallel performance in Racket
 # Set number of iterations
 ./bench --iterations 5 fib
 
+# Scale problem sizes (for quick testing)
+./bench --work 0.1 fib       # 10% of normal size
+./bench --work 0.001 fib     # Very small for smoke tests
+
 # Specific core counts
 ./bench --cores 1,4,8
 ./bench mpl --cores 1-8

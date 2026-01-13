@@ -114,12 +114,40 @@ When adding a new benchmark, follow this checklist:
 3. **Verification tests:** Known outputs or checksums (especially MPL)
 4. **Scaling tests:** Verify speedup with increased workers
 5. **Regression tests:** Compare against historical performance data
+6. **CLI integration tests:** Test `./bench` output using recspecs expect tests
 
 Run tests with:
 ```bash
 raco test tests/                    # All tests
 raco test tests/bmbench-test.rkt    # Specific test
 ```
+
+### Quick Testing During Development
+
+**Always run quick smoke tests after making changes** to verify benchmarks still work:
+
+```bash
+# Very fast smoke test (tiny problem sizes, 1 iteration, few cores)
+./bench --work 0.001 --iterations 1 --cores 1,2 fib histogram
+
+# Quick mode (3 iterations, small sizes)
+./bench --quick fib
+
+# Test specific suite with minimal work
+./bench --work 0.01 --iterations 1 shootout
+```
+
+**Key flags for quick testing:**
+- `--work 0.001` — Scale problem sizes to 0.1% of normal (very fast)
+- `--work 0.01` — Scale to 1% of normal (fast)
+- `--iterations 1` — Single iteration per benchmark
+- `--cores 1,2` — Test with 1 and 2 cores only
+- `--quick` — Built-in quick mode (3 iterations)
+
+**When to use which:**
+- After code changes: `./bench --work 0.001 --iterations 1 --cores 1 <benchmark>`
+- Before committing: `./bench --quick <affected-benchmarks>`
+- Full validation: `./bench <suite>` (with default settings)
 
 ### Critical: Test-Benchmark Alignment
 
