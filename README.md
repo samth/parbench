@@ -89,7 +89,7 @@ bmbench (Boyer-Moore majority), richards (OS simulator), rows1b (data processing
 
 ## Requirements
 
-- Racket 8.10+
+- Racket 9.0+
 - 4+ CPU cores recommended
 - Linux or macOS (Windows via WSL)
 
