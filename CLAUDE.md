@@ -176,14 +176,14 @@ raco test tests/bmbench-test.rkt    # Specific test
 **ALWAYS run these commands successfully before committing:**
 
 ```bash
-raco setup parbench    # Compile the package and check for errors
-raco test .            # Run all tests
+raco setup --check-pkg-deps parbench    # Compile and check dependencies
+raco test .                              # Run all tests
 ```
 
 Both commands must complete without errors. Do not commit if either fails. This ensures:
 - All files compile correctly (no syntax errors, missing requires)
+- All package dependencies are properly declared
 - All tests pass
-- The package is properly configured
 
 Optionally, also run a quick benchmark smoke test:
 ```bash

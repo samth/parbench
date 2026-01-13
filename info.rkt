@@ -2,10 +2,9 @@
 
 (define collection "parbench")
 (define version "0.1")
-(define deps '("plot-gui-lib"
-               "base"
+(define deps '("base"
                "plot-lib"))
-(define build-deps '("rackunit-lib" "recspecs"))
+(define build-deps '("rackunit-lib" "recspecs" "recspecs-lib" "at-exp-lib"))
 
 (define raco-commands
   '(("parbench" (submod parbench/raco-parbench main) "run parallel benchmarks" #f)))

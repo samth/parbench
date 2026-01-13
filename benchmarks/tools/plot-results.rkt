@@ -4,7 +4,7 @@
          racket/list
          racket/math
          racket/string
-         plot
+         plot/no-gui
          plot/utils
          "analysis.rkt")
 
@@ -92,12 +92,11 @@
     (for/list ([name names] [idx (in-naturals)])
       (list idx (symbol->string name))))
 
-  (plot active-datasets
-        #:x-label "benchmark"
-        #:y-label metric-label
-        #:title title
-        #:x-ticks ticks
-        #:x-min -0.5
-        #:x-max (+ (length names) -0.5)
-        #:out-kind 'png
-        #:out-file output-path))
+  (plot-file active-datasets
+             output-path
+             #:x-label "benchmark"
+             #:y-label metric-label
+             #:title title
+             #:x-ticks ticks
+             #:x-min -0.5
+             #:x-max (+ (length names) -0.5)))

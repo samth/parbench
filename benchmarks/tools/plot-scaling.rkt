@@ -4,7 +4,7 @@
          racket/list
          racket/math
          racket/string
-         plot)
+         plot/no-gui)
 
 (provide plot-scaling-from-logs)
 
@@ -174,14 +174,13 @@
         "Speedup"
         (if (eq? metric 'cpu) "CPU time (ms)" "Real time (ms)")))
 
-  (plot flat-renderers
-        #:x-label "Workers"
-        #:y-label y-label
-        #:title title
-        #:width 800
-        #:height 600
-        #:out-kind 'png
-        #:out-file output-path))
+  (plot-file flat-renderers
+             output-path
+             #:x-label "Workers"
+             #:y-label y-label
+             #:title title
+             #:width 800
+             #:height 600))
 
 (module+ main
   (define inputs '())
