@@ -8,39 +8,44 @@ fi
 
 echo "Setting up Racket environment..."
 
+RACKET_DIR="$HOME/.local/racket"
+RACKET_VERSION="9.0"
+
 # Check if Racket is installed
-if ! command -v racket &> /dev/null; then
-  echo "Installing Racket..."
+if ! command -v racket &> /dev/null && [ ! -x "$RACKET_DIR/bin/racket" ]; then
 
-  # Install Racket using the installer script
-  # Using full installation to include plot libraries and other common packages
-  # Installing to user directory (no sudo required)
-  RACKET_DIR="$HOME/.local/racket"
+  echo "Installing Racket $RACKET_VERSION..."
+  INSTALLER_URL="https://download.racket-lang.org/releases/$RACKET_VERSION/installers/racket-$RACKET_VERSION-x86_64-linux-cs.sh"
+  INSTALLER_FILE="/tmp/racket-installer.sh"
 
-  wget -q https://mirror.racket-lang.org/installers/9.0/racket-9.0-x86_64-linux-cs.sh
-  chmod +x racket-9.0-x86_64-linux-cs.sh
-  ./racket-9.0-x86_64-linux-cs.sh --in-place --dest "$RACKET_DIR"
-  rm racket-9.0-x86_64-linux-cs.sh
+  curl -fsSL -o "$INSTALLER_FILE" "$INSTALLER_URL"
+  chmod +x "$INSTALLER_FILE"
+  "$INSTALLER_FILE" --in-place --dest "$RACKET_DIR"
+  rm -f "$INSTALLER_FILE"
 
-  # Add Racket to PATH for this session
+  echo "Racket $RACKET_VERSION installed successfully"
+fi
+
+# Set up environment for this session
+if [ -x "$RACKET_DIR/bin/racket" ]; then
   export PATH="$RACKET_DIR/bin:$PATH"
 
-  # Persist PATH for future sessions
   if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
     echo "export PATH=\"$RACKET_DIR/bin:\$PATH\"" >> "$CLAUDE_ENV_FILE"
   fi
-
-  echo "✅ Racket installed successfully"
-else
-  echo "✅ Racket already installed"
 fi
 
-echo "Installing package dependencies..."
+# Verify Racket is available
+if ! command -v racket &> /dev/null; then
+  echo "ERROR: Racket installation failed"
+  exit 1
+fi
 
-# Install package dependencies
-# Using --auto to automatically install dependencies
-# Using --batch for non-interactive mode
-# Using --no-docs to skip documentation (faster installation)
-raco pkg install --auto --batch --no-docs
+echo "Racket $(racket --version) ready"
 
-echo "✅ Package dependencies installed successfully"
+# Link the current project as a package
+echo "Linking project as package..."
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+raco pkg install --auto --batch --no-docs --link "$PROJECT_DIR" 2>&1 || true
+
+echo "Setup complete"
