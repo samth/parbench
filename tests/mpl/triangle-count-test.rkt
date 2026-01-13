@@ -50,4 +50,3 @@
 (check-equal? seq-count par-count
               "Sequential and parallel should count same triangles")
 
-(printf "triangle-count tests passed\n")

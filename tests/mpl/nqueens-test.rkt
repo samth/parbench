@@ -14,4 +14,3 @@
 (test-nqueens 4 2)
 (test-nqueens 8 92)
 
-(printf "nqueens tests passed\n")

@@ -14,4 +14,3 @@
 (check-equal? (vector-length seq-cent) 20)
 (check-equal? (vector-length par-cent) 20)
 
-(printf "centrality tests passed\n")

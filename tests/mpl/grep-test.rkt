@@ -66,4 +66,3 @@
 (check-equal? letter-matches '(1)
               "Should find 'brown' in line 1")
 
-(printf "grep tests passed\n")

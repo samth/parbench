@@ -15,4 +15,3 @@
 (test-subset-sum #(1 2 3 4 5) 10 #t)      ; 1+2+3+4 = 10
 (test-subset-sum #(10 20 30) 25 #f)       ; No subset sums to 25
 
-(printf "subset-sum tests passed\n")

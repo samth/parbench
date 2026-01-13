@@ -30,4 +30,3 @@
 (check-equal? (vector-length seq-result) (vector-length par-result)
               "Sequential and parallel dedup should produce same size")
 
-(printf "dedup tests passed\n")

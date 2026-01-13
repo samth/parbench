@@ -46,4 +46,3 @@
 (check-true (sorted? large-par) "Large parallel should be sorted")
 (check-equal? large-seq large-par "Large sequential and parallel should match")
 
-(printf "merge-sort tests passed\n")

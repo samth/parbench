@@ -35,4 +35,3 @@
 (check-equal? seq-tokens par-tokens
               "Sequential and parallel tokens should match exactly")
 
-(printf "tokens tests passed\n")

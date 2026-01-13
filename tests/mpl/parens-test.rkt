@@ -27,4 +27,3 @@
 (check-equal? seq-result par-result
               "Sequential and parallel parens should match")
 
-(printf "parens tests passed\n")

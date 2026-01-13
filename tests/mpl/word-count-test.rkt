@@ -34,4 +34,3 @@
 (check-equal? seq-result par-result
               "Sequential and parallel results should match")
 
-(printf "word-count tests passed\n")

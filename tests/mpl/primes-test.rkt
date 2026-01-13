@@ -27,4 +27,3 @@
 (check-equal? seq-count par-count
               (format "Sequential and parallel should match for n=~a" test-n))
 
-(printf "primes tests passed\n")

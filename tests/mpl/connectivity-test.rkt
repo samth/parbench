@@ -42,4 +42,3 @@
               (count-components par-uf 50)
               "Sequential and parallel should find same number of components")
 
-(printf "connectivity tests passed\n")

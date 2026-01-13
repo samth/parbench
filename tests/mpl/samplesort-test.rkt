@@ -31,4 +31,3 @@
 (check-equal? seq-sorted par-sorted
               "Sequential and parallel should produce same result")
 
-(printf "samplesort tests passed\n")

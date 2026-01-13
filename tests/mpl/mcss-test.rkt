@@ -22,4 +22,3 @@
 (check-= seq-result par-result 0.001
          "Sequential and parallel MCSS should match")
 
-(printf "mcss tests passed\n")
