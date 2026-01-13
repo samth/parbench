@@ -1,12 +1,5 @@
 #lang at-exp racket
 ;; Expect test for ./bench CLI output
-;; Uses recspecs to verify the CLI produces expected output format
-;;
-;; NOTE: When using RECSPECS_UPDATE=1 with multiple @expect forms in the same
-;; file, there is a bug where recspecs can corrupt the file by miscalculating
-;; position/span when updating multiple expectations. To update these tests
-;; safely, update them ONE AT A TIME using RECSPECS_UPDATE_TEST="test name".
-;; See: https://github.com/samth/recspecs/issues/57
 
 (require rackunit
          rackunit/text-ui
@@ -28,7 +21,7 @@
      (string-trim line #:left? #f))
    "\n"))
 
-;; Run bench command and capture output
+;; Run bench command and capture stdout only (not stderr)
 ;; Uses find-system-path to get the currently running racket executable,
 ;; which is more reliable than depending on racket being in PATH.
 (define (run-bench . args)
@@ -38,8 +31,7 @@
     (define racket-exe (find-system-path 'exec-file))
     (with-output-to-string
       (lambda ()
-        (parameterize ([current-error-port (current-output-port)])
-          (apply system* racket-exe (path->string bench-script) args))))))
+        (apply system* racket-exe (path->string bench-script) args)))))
 
 (define bench-cli-tests
   (test-suite "bench CLI tests"
