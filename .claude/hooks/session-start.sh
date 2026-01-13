@@ -43,9 +43,40 @@ fi
 
 echo "Racket $(racket --version) ready"
 
-# Link the current project as a package
-echo "Linking project as package..."
+# Install dependencies via git clone (avoids proxy auth issues with package catalog)
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
-raco pkg install --auto --batch --no-docs --link "$PROJECT_DIR" 2>&1 || true
+DEPS_DIR="/tmp/racket-deps"
+
+# Check if parbench is already installed
+if raco pkg show parbench 2>/dev/null | grep -q "parbench"; then
+  echo "parbench package already installed"
+else
+  echo "Installing dependencies via git clone..."
+  mkdir -p "$DEPS_DIR"
+
+  # Clone and install rackcheck-lib if needed
+  if ! raco pkg show rackcheck-lib 2>/dev/null | grep -q "rackcheck-lib"; then
+    if [ ! -d "$DEPS_DIR/rackcheck" ]; then
+      echo "Cloning rackcheck..."
+      git clone --depth 1 https://github.com/Bogdanp/rackcheck.git "$DEPS_DIR/rackcheck" 2>&1
+    fi
+    echo "Installing rackcheck-lib..."
+    raco pkg install --batch --no-docs --link "$DEPS_DIR/rackcheck/rackcheck-lib" 2>&1
+  fi
+
+  # Clone and install recspecs if needed
+  if ! raco pkg show recspecs 2>/dev/null | grep -q "recspecs"; then
+    if [ ! -d "$DEPS_DIR/recspecs" ]; then
+      echo "Cloning recspecs..."
+      git clone --depth 1 https://github.com/samth/recspecs.git "$DEPS_DIR/recspecs" 2>&1
+    fi
+    echo "Installing recspecs packages..."
+    raco pkg install --batch --no-docs --link "$DEPS_DIR/recspecs/recspecs-lib" "$DEPS_DIR/recspecs/recspecs" 2>&1
+  fi
+
+  # Link the current project as a package
+  echo "Linking project as package..."
+  raco pkg install --batch --no-docs --link "$PROJECT_DIR" 2>&1
+fi
 
 echo "Setup complete"
