@@ -15,7 +15,7 @@ RACKET_VERSION="9.0"
 if ! command -v racket &> /dev/null && [ ! -x "$RACKET_DIR/bin/racket" ]; then
 
   echo "Installing Racket $RACKET_VERSION..."
-  INSTALLER_URL="https://download.racket-lang.org/releases/$RACKET_VERSION/installers/racket-$RACKET_VERSION-x86_64-linux-cs.sh"
+  INSTALLER_URL="https://mirror.racket-lang.org/installers/$RACKET_VERSION/racket-$RACKET_VERSION-x86_64-linux-cs.sh"
   INSTALLER_FILE="/tmp/racket-installer.sh"
 
   curl -fsSL -o "$INSTALLER_FILE" "$INSTALLER_URL"
