@@ -223,17 +223,20 @@ Native Racket benchmarks:
 
 @section{Running Individual Benchmarks}
 
-Each benchmark can be run directly using @exec{racket}:
+Each benchmark can be run directly using @exec{racket -l}:
 
 @verbatim{
-racket benchmarks/mpl/fib.rkt --n 42 --threshold 30 --workers 4 --repeat 5
-racket benchmarks/mpl/histogram.rkt --n 200000000 --workers 8 --log results/hist.sexp
-racket benchmarks/mpl/bfs.rkt --n 8000000 --graph-type grid --workers 4
-racket benchmarks/shootout/binary-trees.rkt --n 18 --workers 8 --repeat 10
-racket benchmarks/shootout/mandelbrot.rkt --n 4000 --workers 8
-racket benchmarks/racket/bmbench.rkt --n 1000000 --workers 4 --repeat 10
-racket benchmarks/racket/richards.rkt --iterations 100 --workers 8
+racket -l parbench/benchmarks/mpl/fib -- --n 42 --threshold 30 --workers 4 --repeat 5
+racket -l parbench/benchmarks/mpl/histogram -- --n 200000000 --workers 8 --log results/hist.sexp
+racket -l parbench/benchmarks/mpl/bfs -- --n 8000000 --graph-type grid --workers 4
+racket -l parbench/benchmarks/shootout/binary-trees -- --n 18 --workers 8 --repeat 10
+racket -l parbench/benchmarks/shootout/mandelbrot -- --n 4000 --workers 8
+racket -l parbench/benchmarks/racket/bmbench -- --n 1000000 --workers 4 --repeat 10
+racket -l parbench/benchmarks/racket/richards -- --iterations 100 --workers 8
 }
+
+The @exec{--} separator tells @exec{racket} that subsequent arguments should be
+passed to the benchmark module rather than interpreted as Racket flags.
 
 @subsection{Common Benchmark Options}
 
@@ -290,7 +293,7 @@ The package includes tools for analyzing and visualizing benchmark results.
 Compute statistics (mean, standard deviation, min, max) from log files:
 
 @verbatim{
-racket benchmarks/tools/summarize-results.rkt results/*.sexp
+racket -l parbench/benchmarks/tools/summarize-results -- results/*.sexp
 }
 
 @subsection{Generating Plots}
@@ -298,7 +301,7 @@ racket benchmarks/tools/summarize-results.rkt results/*.sexp
 Create PNG plots from benchmark results:
 
 @verbatim{
-racket benchmarks/tools/plot-results.rkt \
+racket -l parbench/benchmarks/tools/plot-results -- \
   --input results/*.sexp \
   --metric real \
   --output plots/benchmark.png
@@ -309,7 +312,7 @@ racket benchmarks/tools/plot-results.rkt \
 Generate an interactive HTML visualization dashboard:
 
 @verbatim{
-racket benchmarks/tools/visualize.rkt \
+racket -l parbench/benchmarks/tools/visualize -- \
   --log-dir results \
   --output dashboard.html
 }
@@ -328,7 +331,7 @@ Pre-defined configurations are available in @filepath{benchmarks/config/}:
 Use with the suite runner:
 
 @verbatim{
-racket benchmarks/run-suite.rkt --suite all --config benchmarks/config/quick.sexp
+racket -l parbench/benchmarks/run-suite -- --suite all --config benchmarks/config/quick.sexp
 }
 
 @section{Repository Structure}
