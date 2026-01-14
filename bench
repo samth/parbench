@@ -10,7 +10,7 @@
 ;;   all         Run all benchmarks (default)
 ;;   mpl         MPL parallel benchmarks (27)
 ;;   shootout    Shootout benchmarks (12)
-;;   racket      Racket benchmarks (3)
+;;   racket      Racket benchmarks (4)
 ;;
 ;; Individual benchmarks can also be specified by name (e.g., fib, bmbench)
 ;;
@@ -100,7 +100,8 @@
 (define racket-benchmarks
   '((bmbench "--n" "1000000")
     (richards "--iterations" "100")
-    (rows1b "--rows" "2000000" "--chunk-size" "200000")))
+    (rows1b "--rows" "2000000" "--chunk-size" "200000")
+    (inverted-index "--n" "10000000")))
 
 ;; All benchmark names by suite
 (define mpl-names (map first mpl-benchmarks))
