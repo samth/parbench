@@ -47,8 +47,8 @@ MPL (27):
 Shootout (6):
   binary-trees, spectral-norm, fannkuch-redux, mandelbrot, k-nucleotide, regex-dna
 
-Racket (4):
-  bmbench, richards, rows1b, inverted-index}))
+Racket (5):
+  bmbench, richards, rows1b, inverted-index, inverted-index-opt}))
 
     (test-case "bench runs fib with small work"
       (define output (normalize-bench-output (run-bench "--work" "0.001" "--iterations" "1" "--cores" "1" "fib")))
