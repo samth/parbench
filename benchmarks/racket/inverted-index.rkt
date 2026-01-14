@@ -2,14 +2,21 @@
 
 ;; Inverted Index Benchmark
 ;;
-;; Builds an inverted index mapping words to (document-id, count) pairs.
-;; This is a real-world program used in search engines and databases.
+;; Two-phase benchmark demonstrating hash table scaling behavior:
+;;
+;; Phase 1 (BUILD): Builds an inverted index mapping words to (document-id, count)
+;; pairs. Each worker has private hash tables, so this scales well.
+;;
+;; Phase 2 (QUERY): Processes search queries against the shared index.
+;; All workers read from the same hash table, demonstrating Racket's
+;; hash table concurrent reader scaling limitation.
 ;;
 ;; Inspired by PBBS (Problem Based Benchmark Suite) invertedIndex benchmark.
 ;; This is a new Racket implementation, not a port from MPL.
 
 (require racket/place
          racket/match
+         racket/set
          "../common/cli.rkt"
          "../common/run.rkt"
          "../common/logging.rkt")
@@ -17,7 +24,10 @@
 (provide inverted-index-sequential
          inverted-index-parallel
          generate-documents
-         verify-indexes)
+         verify-indexes
+         generate-queries
+         search-sequential
+         search-parallel)
 
 ;; Document representation: vector of words (strings)
 ;; We don't use a struct since each document is just its word vector
@@ -163,6 +173,71 @@
        (for/sum ([p (in-list postings)])
          (+ (car p) (cdr p))))))
 
+;; -------- Query Generation --------
+
+(define (generate-queries index num-queries query-size)
+  ;; Generate random search queries using words from the index
+  ;; Each query is a vector of 2-5 words
+  (define words (hash-keys index))
+  (define word-vec (list->vector words))
+  (define num-words (vector-length word-vec))
+  (when (zero? num-words)
+    (error 'generate-queries "Cannot generate queries from empty index"))
+  (for/vector ([_ (in-range num-queries)])
+    (define size (+ 2 (random (min query-size (- num-words 1)))))
+    (for/vector ([_ (in-range size)])
+      (vector-ref word-vec (random num-words)))))
+
+;; -------- Query Processing --------
+;; These functions read from a SHARED index, demonstrating scaling issues
+
+(define (process-query index query)
+  ;; Look up each word in the shared index and intersect results
+  ;; Returns list of doc-ids that contain ALL query words
+  (define posting-lists
+    (for/list ([word (in-vector query)])
+      (hash-ref index word '())))  ; <-- Concurrent reads from shared hash
+  (cond
+    [(null? posting-lists) '()]
+    [(ormap null? posting-lists) '()]  ; Any empty posting list -> no results
+    [else
+     ;; Intersect posting lists by doc-id
+     (define first-docs (list->set (map car (car posting-lists))))
+     (for/fold ([result first-docs])
+               ([postings (in-list (cdr posting-lists))])
+       (set-intersect result (list->set (map car postings))))]))
+
+(define (search-sequential index queries)
+  ;; Process all queries sequentially, return total result count
+  (for/sum ([query (in-vector queries)])
+    (set-count (process-query index query))))
+
+(define (search-parallel index queries #:workers [workers (processor-count)])
+  ;; Process queries in parallel - all workers read from SHARED index
+  ;; This demonstrates the hash table concurrent reader scaling issue
+  (define n (vector-length queries))
+  (cond
+    [(zero? n) 0]
+    [(<= workers 1) (search-sequential index queries)]
+    [else
+     (define k (max 1 (min workers n)))
+     (define chunk-size (quotient n k))
+     (define pool (make-parallel-thread-pool k))
+
+     (define threads
+       (for/list ([i (in-range k)])
+         (define start (* i chunk-size))
+         (define end (if (= i (sub1 k)) n (+ start chunk-size)))
+         (thread (λ ()
+                   ;; Each worker reads from the SAME shared index
+                   (for/sum ([j (in-range start end)])
+                     (set-count (process-query index (vector-ref queries j)))))
+                 #:pool pool #:keep 'results)))
+
+     (define total (for/sum ([t threads]) (thread-wait t)))
+     (parallel-thread-pool-close pool)
+     total]))
+
 ;; -------- Benchmark --------
 
 (module+ main
@@ -200,48 +275,110 @@
   (define num-docs (vector-length docs))
   (define doc-size (if (> num-docs 0) (vector-length (vector-ref docs 0)) 0))
 
-  (define params (list (list 'n n)
-                       (list 'num-docs num-docs)
-                       (list 'doc-size doc-size)
-                       (list 'workers workers)))
+  ;; Derive query count from n (proportional to document count)
+  (define num-queries (max 100 (quotient n 100)))
+
+  (define build-params (list (list 'n n)
+                             (list 'num-docs num-docs)
+                             (list 'doc-size doc-size)
+                             (list 'workers workers)
+                             (list 'phase "build")))
+
+  (define query-params (list (list 'n n)
+                             (list 'num-queries num-queries)
+                             (list 'workers workers)
+                             (list 'phase "query")))
+
+  ;; ======== PHASE 1: BUILD INDEX ========
+  ;; This phase demonstrates GOOD scaling (workers have private state)
 
   (define sequential-checksum #f)
+  (define shared-index #f)
 
   (unless skip-sequential
     (define seq-result
       (run-benchmark
        (lambda () (inverted-index-sequential docs))
-       #:name 'inverted-index
+       #:name 'inverted-index-build
        #:variant 'sequential
        #:repeat repeat
        #:log-writer writer
-       #:params params
+       #:params build-params
        #:metadata metadata))
-    (set! sequential-checksum (index-checksum seq-result)))
+    (set! sequential-checksum (index-checksum seq-result))
+    (set! shared-index seq-result))
+
+  (define par-index
+    (if sequential-checksum
+        (run-benchmark
+         (lambda () (inverted-index-parallel docs #:workers workers))
+         #:name 'inverted-index-build
+         #:variant 'parallel
+         #:repeat repeat
+         #:log-writer writer
+         #:params build-params
+         #:metadata metadata
+         #:check (lambda (_ result)
+                   (define par-checksum (index-checksum result))
+                   (unless (= par-checksum sequential-checksum)
+                     (error 'inverted-index
+                            "checksum mismatch: seq=~a par=~a"
+                            sequential-checksum par-checksum))))
+        (run-benchmark
+         (lambda () (inverted-index-parallel docs #:workers workers))
+         #:name 'inverted-index-build
+         #:variant 'parallel
+         #:repeat repeat
+         #:log-writer writer
+         #:params build-params
+         #:metadata metadata)))
+
+  ;; Use the parallel-built index for queries if we skipped sequential
+  (unless shared-index
+    (set! shared-index par-index))
+
+  ;; ======== PHASE 2: QUERY INDEX ========
+  ;; This phase demonstrates POOR scaling (workers read from shared hash)
+  ;; All workers contend on the same hash table's internal semaphore
+
+  ;; Generate queries (outside timing)
+  (define queries (generate-queries shared-index num-queries 4))
+
+  (define seq-query-result #f)
+
+  (unless skip-sequential
+    (set! seq-query-result
+          (run-benchmark
+           (lambda () (search-sequential shared-index queries))
+           #:name 'inverted-index-query
+           #:variant 'sequential
+           #:repeat repeat
+           #:log-writer writer
+           #:params query-params
+           #:metadata metadata)))
 
   (void
-   (if sequential-checksum
+   (if seq-query-result
        (run-benchmark
-        (lambda () (inverted-index-parallel docs #:workers workers))
-        #:name 'inverted-index
+        (lambda () (search-parallel shared-index queries #:workers workers))
+        #:name 'inverted-index-query
         #:variant 'parallel
         #:repeat repeat
         #:log-writer writer
-        #:params params
+        #:params query-params
         #:metadata metadata
         #:check (lambda (_ result)
-                  (define par-checksum (index-checksum result))
-                  (unless (= par-checksum sequential-checksum)
+                  (unless (= result seq-query-result)
                     (error 'inverted-index
-                           "checksum mismatch: seq=~a par=~a"
-                           sequential-checksum par-checksum))))
+                           "query result mismatch: seq=~a par=~a"
+                           seq-query-result result))))
        (run-benchmark
-        (lambda () (inverted-index-parallel docs #:workers workers))
-        #:name 'inverted-index
+        (lambda () (search-parallel shared-index queries #:workers workers))
+        #:name 'inverted-index-query
         #:variant 'parallel
         #:repeat repeat
         #:log-writer writer
-        #:params params
+        #:params query-params
         #:metadata metadata)))
 
   (close-log-writer writer))
