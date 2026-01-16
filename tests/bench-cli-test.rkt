@@ -1,29 +1,21 @@
 #lang at-exp racket
 ;; Expect test for ./bench CLI output
-;; Uses recspecs to verify the CLI produces expected output format
+;; Uses recspecs/shell for subprocess handling
 
 (require racket/runtime-path
-         racket/port
-         recspecs)
+         recspecs
+         recspecs/shell)
 
 ;; Get the project root directory (parent of tests/)
 (define-runtime-path here ".")
 (define project-root (simplify-path (build-path here "..")))
-(define bench-script (build-path project-root "bench"))
+(define bench-script (path->string (build-path project-root "bench")))
 
-;; Run bench command and display output (for recspecs to capture)
-(define (run-bench . args)
-  (parameterize ([current-directory project-root])
-    (define racket-exe (find-system-path 'exec-file))
-    ;; Use subprocess for explicit output capture
-    (define-values (proc stdout stdin stderr)
-      (apply subprocess #f #f #f racket-exe (path->string bench-script) args))
-    (close-output-port stdin)
-    (define output (port->string stdout))
-    (close-input-port stdout)
-    (close-input-port stderr)
-    (subprocess-wait proc)
-    (display output)))
+;; Build command with racket executable
+(define (bench-cmd . args)
+  (string-join (cons (path->string (find-system-path 'exec-file))
+                     (cons bench-script args))
+               " "))
 
 ;; Filter to normalize timing values for stable comparison
 (define (normalize-bench-output s)
@@ -36,7 +28,8 @@
    "\n"))
 
 (module+ test
-  @expect[(run-bench "--list")]{Available benchmarks:
+  (parameterize ([current-directory project-root])
+    @expect/shell[(bench-cmd "--list")]{Available benchmarks:
 
 MPL (27):
   histogram, integer-sort, bfs, convex-hull, mis, msf, suffix-array, primes, merge-sort, samplesort, tokens, nqueens, dedup, word-count, fib, shuffle, grep, palindrome, parens, mcss, flatten, collect, bignum-add, subset-sum, triangle-count, connectivity, centrality
@@ -48,8 +41,8 @@ Racket (5):
   bmbench, richards, rows1b, inverted-index, inverted-index-opt
 }
 
-  (parameterize ([recspecs-output-filter normalize-bench-output])
-    @expect[(run-bench "--work" "0.001" "--iterations" "1" "--cores" "1" "fib")]{
+    (parameterize ([recspecs-output-filter normalize-bench-output])
+      @expect/shell[(bench-cmd "--work" "0.001" "--iterations" "1" "--cores" "1" "fib")]{
 Parbench
 
 Running mpl benchmarks...
@@ -63,4 +56,4 @@ Running mpl benchmarks...
 Benchmark               mean/median/min         mean/median/min
 --------------------------------------------------------------------
 fib                        N/N/N               N/N/N
-}))
+})))
