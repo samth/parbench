@@ -36,8 +36,8 @@
   (define result
     (if (quiet-mode)
         (parameterize ([current-output-port (open-output-nowhere)])
-          (apply system* (find-executable-path "racket") benchmark-path cmd-args))
-        (apply system* (find-executable-path "racket") benchmark-path cmd-args)))
+          (apply system* (find-system-path 'exec-file) benchmark-path cmd-args))
+        (apply system* (find-system-path 'exec-file) benchmark-path cmd-args)))
   (unless (quiet-mode)
     (if result (printf " done\n") (printf " FAILED\n")))
   (unless result
@@ -56,8 +56,8 @@
   (define result
     (if (quiet-mode)
         (parameterize ([current-output-port (open-output-nowhere)])
-          (apply system* (find-executable-path "racket") benchmark-path cmd-args))
-        (apply system* (find-executable-path "racket") benchmark-path cmd-args)))
+          (apply system* (find-system-path 'exec-file) benchmark-path cmd-args))
+        (apply system* (find-system-path 'exec-file) benchmark-path cmd-args)))
   (unless (quiet-mode)
     (if result (printf " done\n") (printf " FAILED\n")))
   (unless result

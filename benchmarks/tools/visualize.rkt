@@ -68,8 +68,9 @@
                              (list "--worker-counts" worker-counts)
                              '())))
 
+    ;; Use the current Racket executable (not PATH lookup) for consistency
     (define-values (proc out in err)
-      (apply subprocess #f #f #f (find-executable-path "racket") args))
+      (apply subprocess #f #f #f (find-system-path 'exec-file) args))
     (subprocess-wait proc)
     (close-output-port in)
     (close-input-port out)

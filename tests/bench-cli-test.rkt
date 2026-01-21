@@ -11,10 +11,16 @@
 (define project-root (simplify-path (build-path here "..")))
 (define bench-script (path->string (build-path project-root "bench")))
 
-;; Build command with racket executable
+;; Build command with racket executable for ./bench
 (define (bench-cmd . args)
   (string-join (cons (path->string (find-system-path 'exec-file))
                      (cons bench-script args))
+               " "))
+
+;; Build command for raco parbench
+(define (raco-parbench-cmd . args)
+  (string-join (list* (path->string (find-system-path 'exec-file))
+                      "-l-" "raco" "parbench" args)
                " "))
 
 ;; Filter to normalize timing values for stable comparison
@@ -56,4 +62,17 @@ Running mpl benchmarks...
 Benchmark               mean/median/min         mean/median/min
 --------------------------------------------------------------------
 fib                        N/N/N               N/N/N
-})))
+})
+
+    ;; Test raco parbench wrapper (important for package installations)
+    @expect/shell[(raco-parbench-cmd "--list")]{Available benchmarks:
+
+MPL (27):
+  histogram, integer-sort, bfs, convex-hull, mis, msf, suffix-array, primes, merge-sort, samplesort, tokens, nqueens, dedup, word-count, fib, shuffle, grep, palindrome, parens, mcss, flatten, collect, bignum-add, subset-sum, triangle-count, connectivity, centrality
+
+Shootout (6):
+  binary-trees, spectral-norm, fannkuch-redux, mandelbrot, k-nucleotide, regex-dna
+
+Racket (5):
+  bmbench, richards, rows1b, inverted-index, inverted-index-opt
+}))

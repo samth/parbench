@@ -124,8 +124,9 @@
                            (list "--log" (path->string log-file))))
 
   (printf "Running ~a...\n" name)
+  ;; Use the current Racket executable (not PATH lookup) for consistency
   (define-values (proc out in err)
-    (apply subprocess #f #f #f (find-executable-path "racket") (path->string full-path) all-args))
+    (apply subprocess #f #f #f (find-system-path 'exec-file) (path->string full-path) all-args))
   (subprocess-wait proc)
   (define exit-code (subprocess-status proc))
 

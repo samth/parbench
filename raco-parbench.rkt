@@ -12,4 +12,6 @@
 (module+ main
   (define args (current-command-line-arguments))
   (define cmd (cons (path->string bench-script) (vector->list args)))
-  (exit (apply system*/exit-code (find-executable-path "racket") cmd)))
+  ;; Use the current Racket executable (not PATH lookup) to ensure we use the same
+  ;; Racket that's running this script - important for package build servers
+  (exit (apply system*/exit-code (find-system-path 'exec-file) cmd)))

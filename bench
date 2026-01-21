@@ -284,7 +284,10 @@
 ;; ============================================================================
 
 ;; Run a single benchmark invocation, always capturing output for summary
+;; Use the current Racket executable (not PATH lookup) to ensure we use the same
+;; Racket that's running this script - important for package build servers
 (define (run-benchmark-once benchmark-path cmd-args name workers suppress-output?)
+  (define racket-exe (find-system-path 'exec-file))
   (cond
     [(dry-run-mode)
      (printf "    Would run: racket ~a ~a~n" benchmark-path (string-join cmd-args " "))
@@ -295,7 +298,7 @@
        (with-output-to-string
          (λ ()
            (parameterize ([current-error-port (open-output-nowhere)])
-             (apply system* (find-executable-path "racket")
+             (apply system* racket-exe
                     (path->string benchmark-path) cmd-args)))))
      ;; Parse and store results for summary
      (define real-ms-values (parse-benchmark-output output-str))

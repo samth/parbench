@@ -28,4 +28,12 @@ jobs:
         run: raco test .
 
       - name: Run sample benchmarks
+        # This tests the benchmark subprocess execution, which requires using
+        # find-system-path 'exec-file instead of find-executable-path "racket"
+        # to work on pkg build servers where racket may not be in PATH
         run: ./bench --work 0.001 --iterations 1 --cores 1,2 fib histogram bfs binary-trees
+
+      - name: Test raco parbench wrapper
+        # Test the installed raco command wrapper to ensure it uses the correct
+        # Racket executable (important for package build servers)
+        run: raco parbench --list
